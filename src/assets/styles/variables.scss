@@ -1,0 +1,72 @@
+// ========== BingOps 白蓝色主题变量 ==========
+
+// 主色调 - 蓝色系
+$color-primary: #1677ff;
+$color-primary-light: #4096ff;
+$color-primary-dark: #0958d9;
+$color-secondary: #2f54eb;
+$color-accent: #531dab;
+
+// 状态色
+$color-success: #52c41a;
+$color-warning: #faad14;
+$color-danger: #ff4d4f;
+$color-info: #1677ff;
+
+// 背景色 - 白色/浅灰系
+$bg-base: #f0f2f5;
+$bg-secondary: #ffffff;
+$bg-card: rgba(255, 255, 255, 0.95);
+$bg-card-hover: #fafbff;
+$bg-sidebar: #ffffff;
+$bg-header: #ffffff;
+
+// 文字色 - 蓝色系
+$text-primary: #1d39c4;
+$text-secondary: #597ef7;
+$text-disabled: #bfbfbf;
+$text-accent: $color-primary;
+$text-body: #334155;
+
+// 边框
+$border-color: #d6e4ff;
+$border-color-light: #e6f0ff;
+$border-glow: #91caff;
+
+// 间距
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+
+// 圆角
+$radius-sm: 6px;
+$radius-md: 8px;
+$radius-lg: 12px;
+$radius-xl: 16px;
+
+// 阴影
+$shadow-card: 0 2px 12px rgba(29, 57, 196, 0.06), 0 0 1px rgba(29, 57, 196, 0.08);
+$shadow-glow: 0 4px 20px rgba(22, 119, 255, 0.12);
+$shadow-dropdown: 0 8px 32px rgba(29, 57, 196, 0.1);
+
+// 字体
+$font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+$font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+$font-size-xs: 12px;
+$font-size-sm: 13px;
+$font-size-base: 14px;
+$font-size-lg: 16px;
+$font-size-xl: 20px;
+$font-size-xxl: 24px;
+
+// 布局
+$sidebar-width: 220px;
+$sidebar-collapsed-width: 64px;
+$header-height: 56px;
+
+// 过渡
+$transition-fast: 0.15s ease;
+$transition-base: 0.25s ease;
+$transition-slow: 0.4s ease;

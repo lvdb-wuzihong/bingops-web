@@ -1,0 +1,193 @@
+@use './variables' as *;
+
+// ========== Arco Design 白蓝色主题覆写 ==========
+
+// 全局 CSS 变量覆写
+:root {
+  --arcoblue: #{$color-primary};
+  --orangered: #{$color-danger};
+  --green: #{$color-success};
+  --orange: #{$color-warning};
+}
+
+// 按钮
+.arco-btn {
+  border-radius: $radius-sm;
+  font-weight: 500;
+
+  &-primary {
+    background: $color-primary;
+    border: none;
+    box-shadow: 0 2px 6px rgba(22, 119, 255, 0.2);
+
+    &:hover {
+      background: $color-primary-light;
+      box-shadow: 0 4px 12px rgba(22, 119, 255, 0.3);
+    }
+  }
+}
+
+// 卡片
+.arco-card {
+  background: $bg-card;
+  border: 1px solid $border-color-light;
+  border-radius: $radius-md;
+  box-shadow: $shadow-card;
+  transition: all $transition-base;
+
+  &:hover {
+    border-color: $border-glow;
+    box-shadow: $shadow-glow;
+  }
+
+  .arco-card-header {
+    border-bottom: 1px solid $border-color-light;
+    padding: $spacing-md $spacing-lg;
+  }
+
+  .arco-card-body {
+    padding: $spacing-lg;
+  }
+}
+
+// 表格
+.arco-table {
+  background: transparent;
+  border-radius: $radius-md;
+  overflow: hidden;
+
+  th {
+    background: #f0f5ff !important;
+    color: $text-primary;
+    font-weight: 600;
+    font-size: $font-size-sm;
+    border-bottom: 1px solid $border-color !important;
+  }
+
+  td {
+    border-bottom: 1px solid $border-color-light !important;
+    color: $text-body;
+  }
+
+  tr:hover td {
+    background: #f0f5ff !important;
+  }
+
+  .arco-table-tr {
+    background: transparent !important;
+  }
+}
+
+// 输入框
+.arco-input-wrapper,
+.arco-select-view,
+.arco-picker {
+  background: #ffffff !important;
+  border: 1px solid $border-color !important;
+  border-radius: $radius-sm;
+  color: $text-body;
+
+  &:hover {
+    border-color: $color-primary-light !important;
+  }
+
+  &:focus-within,
+  &.arco-input-focus {
+    border-color: $color-primary !important;
+    box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1) !important;
+  }
+
+  .arco-input::placeholder {
+    color: $text-disabled;
+  }
+}
+
+// 标签
+.arco-tag {
+  border-radius: $radius-sm;
+  font-size: $font-size-xs;
+}
+
+// 分页
+.arco-pagination {
+  .arco-pagination-item {
+    background: transparent;
+    border-color: $border-color;
+    color: $text-secondary;
+
+    &:hover {
+      border-color: $color-primary;
+      color: $color-primary;
+    }
+
+    &-active {
+      background: $color-primary;
+      border-color: $color-primary;
+      color: #ffffff;
+    }
+  }
+}
+
+// 抽屉 / 弹窗
+.arco-modal,
+.arco-drawer {
+  background: $bg-secondary;
+  border: 1px solid $border-color-light;
+  border-radius: $radius-lg;
+}
+
+.arco-modal-header,
+.arco-drawer-header {
+  border-bottom: 1px solid $border-color-light;
+}
+
+// 菜单
+.arco-menu {
+  background: transparent;
+
+  .arco-menu-item,
+  .arco-menu-pop-header,
+  .arco-menu-inline-header {
+    color: $text-secondary;
+    border-radius: $radius-sm;
+    margin: 2px $spacing-sm;
+
+    &:hover {
+      color: $color-primary;
+      background: #f0f5ff;
+    }
+  }
+
+  .arco-menu-item.arco-menu-selected,
+  .arco-menu-pop-header.arco-menu-selected,
+  .arco-menu-inline-header.arco-menu-selected {
+    color: $color-primary;
+    background: #e6f4ff;
+    font-weight: 600;
+  }
+}
+
+// 面包屑
+.arco-breadcrumb {
+  color: $text-secondary;
+
+  a {
+    color: $text-secondary;
+    &:hover {
+      color: $color-primary;
+    }
+  }
+}
+
+// 下拉菜单
+.arco-dropdown-menu {
+  background: $bg-secondary;
+  border: 1px solid $border-color-light;
+  box-shadow: $shadow-dropdown;
+}
+
+// Tooltip
+.arco-tooltip-content {
+  background: $bg-secondary;
+  border: 1px solid $border-color-light;
+}
