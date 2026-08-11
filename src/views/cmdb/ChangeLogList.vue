@@ -26,6 +26,15 @@
         <template #change_type="{ record }">
           <a-tag :size="'small'" :color="changeTypeColor(record.change_type)">{{ changeTypeText(record.change_type) }}</a-tag>
         </template>
+        <template #resource_name="{ record }">
+          <a-link @click="$router.push({ name: 'ResourceDetail', params: { id: String(record.resource_id) } })">
+            {{ resourceNameMap[record.resource_id] || `#${record.resource_id}` }}
+          </a-link>
+        </template>
+        <template #model_name="{ record }">
+          <a-tag size="small" color="arcoblue">{{ record.resource_type || '-' }}</a-tag>
+        </template>
+        <template #field="{ record }">{{ record.field || '-' }}</template>
         <template #old_value="{ record }">
           <span class="mono-text text-danger">{{ record.old_value || '-' }}</span>
         </template>
@@ -35,6 +44,7 @@
         <template #source="{ record }">
           <a-tag size="small" :color="record.source === 'api' ? 'blue' : record.source === 'sync' ? 'green' : 'orange'">{{ record.source }}</a-tag>
         </template>
+        <template #operator="{ record }">{{ record.operator || '-' }}</template>
         <template #created_at="{ record }">
           {{ formatTime(record.created_at) }}
         </template>
@@ -49,20 +59,39 @@ import { Message } from '@arco-design/web-vue'
 import { IconRefresh } from '@arco-design/web-vue/es/icon'
 import { getChangeLogs } from '../../api/changeLog'
 import type { IChangeLog, IChangeLogQuery } from '../../api/changeLog'
+import { getResourceDetail } from '../../api/cmdb'
 
 const loading = ref(false)
 const logs = ref<IChangeLog[]>([])
 const queryParams = reactive<IChangeLogQuery>({ change_type: undefined, page: 1, page_size: 20 })
 const pagination = reactive({ current: 1, pageSize: 20, total: 0, showTotal: true, showPageSize: true })
 
+// 资源名称反查（后端审计响应不含 resource_name，仅返回 resource_id）
+const resourceNameMap = ref<Record<number, string>>({})
+
+async function resolveResourceNames(ids: number[]) {
+  const missing = [...new Set(ids)].filter((id) => resourceNameMap.value[id] === undefined)
+  await Promise.all(
+    missing.map(async (id) => {
+      try {
+        const res = await getResourceDetail(id)
+        resourceNameMap.value[id] = res.data.name
+      } catch {
+        // 资源不存在或无权限，展示 #id 兜底
+      }
+    }),
+  )
+}
+
 const columns = [
-  { title: '资源名称', dataIndex: 'resource_name', width: 160, ellipsis: true },
+  { title: '资源名称', slotName: 'resource_name', width: 160, ellipsis: true },
+  { title: '模型', slotName: 'model_name', width: 110 },
   { title: '变更类型', slotName: 'change_type', width: 90 },
-  { title: '字段', dataIndex: 'field_name', width: 120 },
+  { title: '字段', slotName: 'field', width: 120 },
   { title: '旧值', slotName: 'old_value', width: 160, ellipsis: true },
   { title: '新值', slotName: 'new_value', width: 160, ellipsis: true },
   { title: '来源', slotName: 'source', width: 80 },
-  { title: '操作者', dataIndex: 'operator', width: 100 },
+  { title: '操作者', slotName: 'operator', width: 100 },
   { title: '时间', slotName: 'created_at', width: 170 },
 ]
 
@@ -76,6 +105,7 @@ async function fetchData() {
     const res = await getChangeLogs({ ...queryParams, page: pagination.current, page_size: pagination.pageSize })
     logs.value = res.data.items
     pagination.total = res.data.pagination.total
+    resolveResourceNames(res.data.items.map((l) => l.resource_id))
   } catch { Message.error('获取变更日志失败') } finally { loading.value = false }
 }
 

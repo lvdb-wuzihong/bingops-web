@@ -12,6 +12,8 @@
       <template #new_value="{ record }">
         <span style="color: #52c41a; font-family: monospace; font-size: 12px;">{{ record.new_value || '-' }}</span>
       </template>
+      <template #field="{ record }">{{ record.field || '-' }}</template>
+      <template #operator="{ record }">{{ record.operator || '-' }}</template>
       <template #created_at="{ record }">{{ formatTime(record.created_at) }}</template>
     </a-table>
     <a-empty v-if="!loading && logs.length === 0" description="暂无变更记录" />
@@ -30,11 +32,11 @@ const logs = ref<IChangeLog[]>([])
 
 const columns = [
   { title: '变更类型', slotName: 'change_type', width: 90 },
-  { title: '字段', dataIndex: 'field_name', width: 120 },
+  { title: '字段', slotName: 'field', width: 120 },
   { title: '旧值', slotName: 'old_value', width: 160, ellipsis: true },
   { title: '新值', slotName: 'new_value', width: 160, ellipsis: true },
   { title: '来源', dataIndex: 'source', width: 80 },
-  { title: '操作者', dataIndex: 'operator', width: 100 },
+  { title: '操作者', slotName: 'operator', width: 100 },
   { title: '时间', slotName: 'created_at', width: 170 },
 ]
 

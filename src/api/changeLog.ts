@@ -4,9 +4,12 @@ import type { IPaginatedData } from '../types/common'
 export interface IChangeLog {
   id: number
   resource_id: number
-  resource_name: string | null
+  model_id: number | null
+  model_code: string | null
+  // 模型名称（v2 由 model_id 解析，兼容 v1 契约字段名）
+  resource_type: string
   change_type: string
-  field_name: string | null
+  field: string | null
   old_value: string | null
   new_value: string | null
   source: string
