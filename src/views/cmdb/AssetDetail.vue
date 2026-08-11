@@ -80,6 +80,7 @@
               <a-select v-model="formData.status" placeholder="请选择">
                 <a-option value="running">运行中</a-option>
                 <a-option value="ready">就绪</a-option>
+                <a-option value="not_ready">未就绪</a-option>
                 <a-option value="stopped">已停止</a-option>
                 <a-option value="pending">启动中</a-option>
                 <a-option value="failed">异常</a-option>
@@ -157,7 +158,7 @@ const modelFields = ref<IModelField[]>([])
 const modelName = ref('')
 
 const providerMap: Record<string, string> = { aliyun: '阿里云', aws: 'AWS', gcp: '谷歌云', k8s: 'Kubernetes', manual: '手动录入' }
-const statusMap: Record<string, string> = { running: '运行中', ready: '就绪', stopped: '已停止', pending: '启动中', failed: '异常', succeeded: '已完成', maintenance: '维护中', unknown: '未知' }
+const statusMap: Record<string, string> = { running: '运行中', ready: '就绪', not_ready: '未就绪', stopped: '已停止', pending: '启动中', failed: '异常', succeeded: '已完成', maintenance: '维护中', unknown: '未知' }
 const sourceMap: Record<string, string> = { discovery: '自动发现', kafka: 'Kafka', manual: '手动录入' }
 
 const providerLabel = computed(() => resource.value?.provider ? (providerMap[resource.value.provider] || resource.value.provider) : '-')
@@ -190,6 +191,8 @@ const groupedFields = computed(() => {
 
 function formatFieldValue(val: unknown): string {
   if (val === null || val === undefined) return '-'
+  // 字符串数组（如工作负载镜像列表）逐行展示，避免裸 JSON 括号引号
+  if (Array.isArray(val) && val.length > 0 && val.every(i => typeof i === 'string')) return val.join('\n')
   if (typeof val === 'object') return JSON.stringify(val, null, 2)
   return String(val)
 }
@@ -333,6 +336,7 @@ onUnmounted(() => {
   &.status-succeeded { background: $color-primary; box-shadow: 0 0 6px rgba(22,119,255,0.4); }
   &.status-stopped { background: $color-danger; box-shadow: 0 0 6px rgba(255,77,79,0.4); }
   &.status-failed { background: $color-danger; box-shadow: 0 0 6px rgba(255,77,79,0.4); }
+  &.status-not_ready { background: $color-danger; box-shadow: 0 0 6px rgba(255,77,79,0.4); }
   &.status-pending { background: $color-warning; box-shadow: 0 0 6px rgba(250,173,20,0.4); }
   &.status-maintenance { background: $color-warning; box-shadow: 0 0 6px rgba(250,173,20,0.4); }
   &.status-unknown { background: $text-disabled; }

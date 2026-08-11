@@ -43,6 +43,7 @@
               <a-select v-model="queryParams.status" placeholder="状态" allow-clear style="width: 120px" @change="handleSearch">
                 <a-option value="running">运行中</a-option>
                 <a-option value="ready">就绪</a-option>
+                <a-option value="not_ready">未就绪</a-option>
                 <a-option value="stopped">已停止</a-option>
                 <a-option value="pending">启动中</a-option>
                 <a-option value="failed">异常</a-option>
@@ -201,6 +202,7 @@
               <a-select v-model="formData.status" placeholder="请选择">
                 <a-option value="running">运行中</a-option>
                 <a-option value="ready">就绪</a-option>
+                <a-option value="not_ready">未就绪</a-option>
                 <a-option value="stopped">已停止</a-option>
                 <a-option value="pending">启动中</a-option>
                 <a-option value="failed">异常</a-option>
@@ -400,13 +402,13 @@ const runningCount = computed(() => {
 })
 const stoppedCount = computed(() => {
   const s = stats.value?.by_status
-  return (s?.stopped ?? 0) + (s?.failed ?? 0)
+  return (s?.stopped ?? 0) + (s?.failed ?? 0) + (s?.not_ready ?? 0)
 })
 
 const pagination = reactive({ current: 1, pageSize: 15, total: 0, showTotal: true, showPageSize: true })
 
 const providerMap: Record<string, string> = { aliyun: '阿里云', aws: 'AWS', gcp: '谷歌云', k8s: 'Kubernetes', manual: '手动录入' }
-const statusMap: Record<string, string> = { running: '运行中', ready: '就绪', stopped: '已停止', pending: '启动中', failed: '异常', succeeded: '已完成', maintenance: '维护中', unknown: '未知' }
+const statusMap: Record<string, string> = { running: '运行中', ready: '就绪', not_ready: '未就绪', stopped: '已停止', pending: '启动中', failed: '异常', succeeded: '已完成', maintenance: '维护中', unknown: '未知' }
 
 function providerText(p: string) { return providerMap[p] || p }
 function statusText(s: string) { return statusMap[s] || s }
@@ -650,6 +652,7 @@ onMounted(async () => {
   &.status-succeeded { background: $color-primary; box-shadow: 0 0 6px rgba(22,119,255,0.4); }
   &.status-stopped { background: $color-danger; box-shadow: 0 0 6px rgba(255,77,79,0.4); }
   &.status-failed { background: $color-danger; box-shadow: 0 0 6px rgba(255,77,79,0.4); }
+  &.status-not_ready { background: $color-danger; box-shadow: 0 0 6px rgba(255,77,79,0.4); }
   &.status-pending { background: $color-warning; box-shadow: 0 0 6px rgba(250,173,20,0.4); }
   &.status-maintenance { background: $color-warning; box-shadow: 0 0 6px rgba(250,173,20,0.4); }
   &.status-unknown { background: $text-disabled; }
