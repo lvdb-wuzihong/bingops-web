@@ -79,7 +79,11 @@
             <a-form-item field="status" label="状态">
               <a-select v-model="formData.status" placeholder="请选择">
                 <a-option value="running">运行中</a-option>
+                <a-option value="ready">就绪</a-option>
                 <a-option value="stopped">已停止</a-option>
+                <a-option value="pending">启动中</a-option>
+                <a-option value="failed">异常</a-option>
+                <a-option value="succeeded">已完成</a-option>
                 <a-option value="maintenance">维护中</a-option>
                 <a-option value="unknown">未知</a-option>
               </a-select>
@@ -153,7 +157,7 @@ const modelFields = ref<IModelField[]>([])
 const modelName = ref('')
 
 const providerMap: Record<string, string> = { aliyun: '阿里云', aws: 'AWS', gcp: '谷歌云', k8s: 'Kubernetes', manual: '手动录入' }
-const statusMap: Record<string, string> = { running: '运行中', stopped: '已停止', maintenance: '维护中', unknown: '未知' }
+const statusMap: Record<string, string> = { running: '运行中', ready: '就绪', stopped: '已停止', pending: '启动中', failed: '异常', succeeded: '已完成', maintenance: '维护中', unknown: '未知' }
 const sourceMap: Record<string, string> = { discovery: '自动发现', kafka: 'Kafka', manual: '手动录入' }
 
 const providerLabel = computed(() => resource.value?.provider ? (providerMap[resource.value.provider] || resource.value.provider) : '-')
@@ -325,7 +329,11 @@ onUnmounted(() => {
 .status-dot {
   width: 8px; height: 8px; border-radius: 50%;
   &.status-running { background: $color-success; box-shadow: 0 0 6px rgba(82,196,26,0.5); }
+  &.status-ready { background: $color-success; box-shadow: 0 0 6px rgba(82,196,26,0.5); }
+  &.status-succeeded { background: $color-primary; box-shadow: 0 0 6px rgba(22,119,255,0.4); }
   &.status-stopped { background: $color-danger; box-shadow: 0 0 6px rgba(255,77,79,0.4); }
+  &.status-failed { background: $color-danger; box-shadow: 0 0 6px rgba(255,77,79,0.4); }
+  &.status-pending { background: $color-warning; box-shadow: 0 0 6px rgba(250,173,20,0.4); }
   &.status-maintenance { background: $color-warning; box-shadow: 0 0 6px rgba(250,173,20,0.4); }
   &.status-unknown { background: $text-disabled; }
 }
