@@ -111,7 +111,7 @@
               <a-link @click="goDetail(record.id)">{{ record.name }}</a-link>
             </template>
             <template #model_name="{ record }">
-              <a-tag size="small" color="arcoblue">{{ record.model_name || selectedModelName || '-' }}</a-tag>
+              <a-tag size="small" color="arcoblue">{{ modelNameMap[record.model_id] || record.model_name || '-' }}</a-tag>
             </template>
             <template #provider="{ record }">
               <a-tag v-if="record.provider" size="small" color="arcoblue">{{ providerText(record.provider) }}</a-tag>
@@ -267,6 +267,13 @@ const modelFieldMap = ref<Record<number, IModelField[]>>({}) // modelId -> field
 const selectedModelName = computed(() => {
   if (!selectedModelId.value) return ''
   return allModels.value.find(m => m.id === selectedModelId.value)?.name || ''
+})
+
+// 模型 ID → 名称映射（后端列表响应不含 model_name，前端用模型树数据反查）
+const modelNameMap = computed(() => {
+  const map: Record<number, string> = {}
+  allModels.value.forEach(m => { map[m.id] = m.name })
+  return map
 })
 
 // Build tree: category nodes -> model children

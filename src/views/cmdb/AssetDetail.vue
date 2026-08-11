@@ -18,7 +18,7 @@
           <a-descriptions :column="2" layout="horizontal" size="medium">
             <a-descriptions-item label="资源名称"><span class="mono-text">{{ resource.name }}</span></a-descriptions-item>
             <a-descriptions-item label="Provider ID"><span class="mono-text">{{ resource.provider_id }}</span></a-descriptions-item>
-            <a-descriptions-item label="所属模型"><a-tag size="small" color="arcoblue">{{ resource.model_name || '-' }}</a-tag></a-descriptions-item>
+            <a-descriptions-item label="所属模型"><a-tag size="small" color="arcoblue">{{ modelName || resource.model_name || '-' }}</a-tag></a-descriptions-item>
             <a-descriptions-item label="状态">
               <div class="status-cell"><span class="status-dot" :class="`status-${resource.status}`"></span>{{ statusText }}</div>
             </a-descriptions-item>
@@ -150,6 +150,7 @@ const monitorChartRef = ref<HTMLElement>()
 let chartInstance: echarts.ECharts | null = null
 
 const modelFields = ref<IModelField[]>([])
+const modelName = ref('')
 
 const providerMap: Record<string, string> = { aliyun: '阿里云', aws: 'AWS', gcp: '谷歌云', k8s: 'Kubernetes', manual: '手动录入' }
 const statusMap: Record<string, string> = { running: '运行中', stopped: '已停止', maintenance: '维护中', unknown: '未知' }
@@ -203,6 +204,11 @@ async function fetchDetail() {
       try {
         const fieldRes = await modelApi.getModelFields(res.data.model_id)
         modelFields.value = fieldRes.data
+      } catch { /* ignore */ }
+      // 后端详情响应不含 model_name，单独拉取模型信息
+      try {
+        const modelRes = await modelApi.getModelDetail(res.data.model_id)
+        modelName.value = modelRes.data.name
       } catch { /* ignore */ }
     }
   } catch { Message.error('获取资源详情失败') } finally { loading.value = false }
