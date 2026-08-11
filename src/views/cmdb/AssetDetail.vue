@@ -185,7 +185,7 @@ const groupedFields = computed(() => {
 
 function formatFieldValue(val: unknown): string {
   if (val === null || val === undefined) return '-'
-  if (typeof val === 'object') return JSON.stringify(val)
+  if (typeof val === 'object') return JSON.stringify(val, null, 2)
   return String(val)
 }
 
@@ -225,7 +225,14 @@ function handleEdit() {
   Object.keys(dynamicFields).forEach(k => delete dynamicFields[k])
   editFieldDefs.value.forEach(f => {
     const val = resource.value!.fields?.[f.code]
-    dynamicFields[f.code] = val ?? (f.field_type === 'multi_enum' ? [] : undefined)
+    if (val === null || val === undefined) {
+      dynamicFields[f.code] = f.field_type === 'multi_enum' ? [] : undefined
+    } else if (typeof val === 'object' && f.field_type !== 'multi_enum') {
+      // json 等复杂对象回显为格式化 JSON 文本，避免 textarea 显示 [object Object]
+      dynamicFields[f.code] = JSON.stringify(val, null, 2)
+    } else {
+      dynamicFields[f.code] = val
+    }
   })
   formVisible.value = true
 }
@@ -335,7 +342,7 @@ onUnmounted(() => {
 
 .field-item { display: flex; flex-direction: column; gap: 2px; padding: $spacing-xs 0; }
 .field-key { font-size: $font-size-xs; color: $text-secondary; }
-.field-value { font-family: $font-mono; font-size: $font-size-sm; color: $text-body; word-break: break-all; }
+.field-value { font-family: $font-mono; font-size: $font-size-sm; color: $text-body; word-break: break-all; white-space: pre-wrap; }
 
 .monitor-chart { height: 300px; }
 </style>

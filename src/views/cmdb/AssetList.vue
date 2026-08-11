@@ -338,12 +338,7 @@ const tableColumns = computed(() => {
     dataIndex: `fields.${f.code}`,
     width: 130,
     ellipsis: true,
-    render: ({ record }: any) => {
-      const val = record.fields?.[f.code]
-      if (val === null || val === undefined) return '-'
-      if (typeof val === 'object') return JSON.stringify(val)
-      return String(val)
-    },
+    render: ({ record }: any) => formatFieldCell(record.fields?.[f.code]),
   }))
   const actionCols: any[] = [
     { title: '来源', slotName: 'source', width: 100 },
@@ -352,6 +347,20 @@ const tableColumns = computed(() => {
   ]
   return [...fixed, ...dynCols, ...actionCols]
 })
+
+// 复杂字段单元格展示：对象数组优先展示 name 摘要，其余回退 JSON
+function formatFieldCell(val: unknown): string {
+  if (val === null || val === undefined) return '-'
+  if (Array.isArray(val)) {
+    if (val.length === 0) return '-'
+    if (val.every(i => i !== null && typeof i === 'object' && 'name' in (i as Record<string, unknown>))) {
+      return val.map(i => String((i as Record<string, unknown>).name)).join(', ')
+    }
+    return JSON.stringify(val)
+  }
+  if (typeof val === 'object') return JSON.stringify(val)
+  return String(val)
+}
 
 // ========== 资源列表 ==========
 const queryParams = reactive<IResourceQuery>({
@@ -486,7 +495,14 @@ function handleEdit(record: ICmdbResource) {
     const fields = modelFieldMap.value[record.model_id] || []
     fields.forEach(f => {
       const val = record.fields?.[f.code]
-      dynamicFields[f.code] = val ?? (f.field_type === 'multi_enum' ? [] : undefined)
+      if (val === null || val === undefined) {
+        dynamicFields[f.code] = f.field_type === 'multi_enum' ? [] : undefined
+      } else if (typeof val === 'object' && f.field_type !== 'multi_enum') {
+        // json 等复杂对象回显为格式化 JSON 文本，避免 textarea 显示 [object Object]
+        dynamicFields[f.code] = JSON.stringify(val, null, 2)
+      } else {
+        dynamicFields[f.code] = val
+      }
     })
   })
   formVisible.value = true
