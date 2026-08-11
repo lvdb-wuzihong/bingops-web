@@ -94,7 +94,7 @@
       :ok-loading="editLoading"
       @ok="handleEditSubmit"
     >
-      <a-form :model="editForm" layout="vertical" ref="editFormRef">
+      <a-form :model="editForm" layout="vertical">
         <a-form-item field="email" label="邮箱">
           <a-input v-model="editForm.email" placeholder="请输入邮箱" />
         </a-form-item>
@@ -149,7 +149,7 @@ const columns = [
   { title: '状态', slotName: 'is_active', width: 80 },
   { title: '类型', slotName: 'is_superuser', width: 110 },
   { title: '角色', slotName: 'roles', width: 200 },
-  { title: '操作', slotName: 'actions', width: 130, fixed: 'right' },
+  { title: '操作', slotName: 'actions', width: 130, fixed: 'right' as const },
 ]
 
 async function fetchData() {
@@ -197,7 +197,6 @@ async function handleCreateSubmit() {
 // --- 编辑 ---
 const editVisible = ref(false)
 const editLoading = ref(false)
-const editFormRef = ref()
 const editingId = ref(0)
 const editForm = reactive({ email: '', display_name: '', is_active: true, is_superuser: false })
 

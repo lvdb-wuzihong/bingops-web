@@ -63,7 +63,7 @@
 
     <!-- 编辑角色弹窗 -->
     <a-modal v-model:visible="editVisible" title="编辑角色" :ok-loading="editLoading" @ok="handleEditSubmit">
-      <a-form :model="editForm" layout="vertical" ref="editFormRef">
+      <a-form :model="editForm" layout="vertical">
         <a-form-item field="name" label="角色名称">
           <a-input v-model="editForm.name" placeholder="请输入角色名称" />
         </a-form-item>
@@ -117,7 +117,7 @@ const columns = [
   { title: '名称', dataIndex: 'name', width: 150 },
   { title: '描述', dataIndex: 'description', width: 250 },
   { title: '权限', slotName: 'permissions', width: 280 },
-  { title: '操作', slotName: 'actions', width: 130, fixed: 'right' },
+  { title: '操作', slotName: 'actions', width: 130, fixed: 'right' as const },
 ]
 
 async function fetchData() {
@@ -158,7 +158,6 @@ async function handleCreateSubmit() {
 // --- 编辑 ---
 const editVisible = ref(false)
 const editLoading = ref(false)
-const editFormRef = ref()
 const editingId = ref(0)
 const editForm = reactive({ name: '', description: '' })
 

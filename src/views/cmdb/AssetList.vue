@@ -448,7 +448,8 @@ const formFieldDefs = computed(() => {
   return modelFieldMap.value[formData.model_id] || []
 })
 
-async function onFormModelChange(modelId: number) {
+async function onFormModelChange(value: unknown) {
+  const modelId = Number(value)
   // reset dynamic fields
   Object.keys(dynamicFields).forEach(k => delete dynamicFields[k])
   if (modelId) {

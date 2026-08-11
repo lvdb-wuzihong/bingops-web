@@ -14,7 +14,7 @@
             <a-table :data="parents" :columns="parentColumns" :pagination="false" :loading="parentsLoading" size="small" row-key="id">
               <template #parent_name="{ record }">
                 <a-link @click="$router.push({ name: 'ResourceDetail', params: { id: String(record.parent_id) } })">
-                  {{ record.parent_name || `#${record.parent_id}` }}
+                  {{ resourceNameMap[record.parent_id] || `#${record.parent_id}` }}
                 </a-link>
               </template>
               <template #actions="{ record }">
@@ -30,7 +30,7 @@
             <a-table :data="children" :columns="childColumns" :pagination="false" :loading="childrenLoading" size="small" row-key="id">
               <template #child_name="{ record }">
                 <a-link @click="$router.push({ name: 'ResourceDetail', params: { id: String(record.child_id) } })">
-                  {{ record.child_name || `#${record.child_id}` }}
+                  {{ resourceNameMap[record.child_id] || `#${record.child_id}` }}
                 </a-link>
               </template>
               <template #actions="{ record }">
@@ -60,7 +60,7 @@
         </template>
         <template #peer_name="{ record }">
           <a-link @click="$router.push({ name: 'ResourceDetail', params: { id: String(record.source_id === resourceId ? record.target_id : record.source_id) } })">
-            {{ record.source_id === resourceId ? (record.target_name || `#${record.target_id}`) : (record.source_name || `#${record.source_id}`) }}
+            {{ resourceNameMap[record.source_id === resourceId ? record.target_id : record.source_id] || `#${record.source_id === resourceId ? record.target_id : record.source_id}` }}
           </a-link>
         </template>
         <template #actions="{ record }">
@@ -83,8 +83,8 @@
         <a-form-item label="目标资源 ID">
           <a-input-number v-model="belongsToForm.targetId" placeholder="请输入资源 ID" style="width: 100%" />
         </a-form-item>
-        <a-form-item label="关系类型">
-          <a-input v-model="belongsToForm.relationType" placeholder="如：host_in_vpc, pod_in_namespace" />
+        <a-form-item label="描述">
+          <a-input v-model="belongsToForm.description" placeholder="可选，如：集群归属、调度于" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -95,8 +95,8 @@
         <a-form-item label="目标资源 ID">
           <a-input-number v-model="relatesToForm.targetId" placeholder="请输入资源 ID" style="width: 100%" />
         </a-form-item>
-        <a-form-item label="关系类型">
-          <a-input v-model="relatesToForm.relationType" placeholder="如：service_to_pod, db_to_app" />
+        <a-form-item label="描述">
+          <a-input v-model="relatesToForm.description" placeholder="可选，如：selector 匹配、承载于" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -107,10 +107,28 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconDelete } from '@arco-design/web-vue/es/icon'
-import { getChildren, getParents, addBelongsTo, removeBelongsTo, getRelationsFrom, getRelationsTo, addRelatesTo, removeRelatesTo } from '../../api/relationship'
-import type { IBelongsToRelation, IRelatesToRelation } from '../../api/relationship'
+import { getChildren, getParents, addBelongsTo, removeBelongsTo, getRelationsFrom, getRelationsTo, addRelatesTo, removeRelatesTo } from '../../../api/relationship'
+import type { IBelongsToRelation, IRelatesToRelation } from '../../../api/relationship'
+import { getResourceDetail } from '../../../api/cmdb'
 
 const props = defineProps<{ resourceId: number }>()
+
+// ========== 资源名称反查（后端关系接口不再返回 name 字段） ==========
+const resourceNameMap = ref<Record<number, string>>({})
+
+async function resolveResourceNames(ids: number[]) {
+  const missing = [...new Set(ids)].filter((id) => resourceNameMap.value[id] === undefined)
+  await Promise.all(
+    missing.map(async (id) => {
+      try {
+        const res = await getResourceDetail(id)
+        resourceNameMap.value[id] = res.data.name
+      } catch {
+        // 资源不存在或无权限，展示 #id 兜底
+      }
+    }),
+  )
+}
 
 // ========== 从属关系 ==========
 const parents = ref<IBelongsToRelation[]>([])
@@ -120,38 +138,46 @@ const childrenLoading = ref(false)
 
 const parentColumns = [
   { title: '资源名称', slotName: 'parent_name' },
-  { title: '关系类型', dataIndex: 'relation_type', width: 140 },
+  { title: '描述', dataIndex: 'description', width: 140 },
   { title: '操作', slotName: 'actions', width: 60 },
 ]
 const childColumns = [
   { title: '资源名称', slotName: 'child_name' },
-  { title: '关系类型', dataIndex: 'relation_type', width: 140 },
+  { title: '描述', dataIndex: 'description', width: 140 },
   { title: '操作', slotName: 'actions', width: 60 },
 ]
 
 async function fetchParents() {
   parentsLoading.value = true
-  try { const res = await getParents(props.resourceId); parents.value = res.data } catch { /* ignore */ } finally { parentsLoading.value = false }
+  try {
+    const res = await getParents(props.resourceId)
+    parents.value = res.data
+    resolveResourceNames(res.data.map((r) => r.parent_id))
+  } catch { /* ignore */ } finally { parentsLoading.value = false }
 }
 
 async function fetchChildren() {
   childrenLoading.value = true
-  try { const res = await getChildren(props.resourceId); children.value = res.data } catch { /* ignore */ } finally { childrenLoading.value = false }
+  try {
+    const res = await getChildren(props.resourceId)
+    children.value = res.data
+    resolveResourceNames(res.data.map((r) => r.child_id))
+  } catch { /* ignore */ } finally { childrenLoading.value = false }
 }
 
 // 添加从属
 const showBelongsToModal = ref(false)
 const belongsToLoading = ref(false)
-const belongsToForm = reactive({ direction: 'parent' as 'parent' | 'child', targetId: undefined as number | undefined, relationType: '' })
+const belongsToForm = reactive({ direction: 'parent' as 'parent' | 'child', targetId: undefined as number | undefined, description: '' })
 
 async function handleAddBelongsTo() {
-  if (!belongsToForm.targetId || !belongsToForm.relationType) { Message.warning('请填写完整'); return }
+  if (!belongsToForm.targetId) { Message.warning('请填写目标资源 ID'); return }
   belongsToLoading.value = true
   try {
     if (belongsToForm.direction === 'parent') {
-      await addBelongsTo({ child_id: props.resourceId, parent_id: belongsToForm.targetId, relation_type: belongsToForm.relationType })
+      await addBelongsTo({ child_id: props.resourceId, parent_id: belongsToForm.targetId, description: belongsToForm.description || null })
     } else {
-      await addBelongsTo({ child_id: belongsToForm.targetId, parent_id: props.resourceId, relation_type: belongsToForm.relationType })
+      await addBelongsTo({ child_id: belongsToForm.targetId, parent_id: props.resourceId, description: belongsToForm.description || null })
     }
     Message.success('添加成功')
     showBelongsToModal.value = false
@@ -174,7 +200,7 @@ const allRelations = computed(() => [...relationsFrom.value, ...relationsTo.valu
 const relatesColumns = [
   { title: '方向', slotName: 'direction', width: 90 },
   { title: '关联资源', slotName: 'peer_name' },
-  { title: '关系类型', dataIndex: 'relation_type', width: 140 },
+  { title: '描述', dataIndex: 'description', width: 140 },
   { title: '操作', slotName: 'actions', width: 60 },
 ]
 
@@ -187,19 +213,24 @@ async function fetchRelations() {
     ])
     relationsFrom.value = fromRes.data
     relationsTo.value = toRes.data
+    const peerIds = [
+      ...fromRes.data.map((r) => r.target_id),
+      ...toRes.data.map((r) => r.source_id),
+    ]
+    resolveResourceNames(peerIds)
   } catch { /* ignore */ } finally { relationsLoading.value = false }
 }
 
 // 添加关联
 const showRelatesToModal = ref(false)
 const relatesToLoading = ref(false)
-const relatesToForm = reactive({ targetId: undefined as number | undefined, relationType: '' })
+const relatesToForm = reactive({ targetId: undefined as number | undefined, description: '' })
 
 async function handleAddRelatesTo() {
-  if (!relatesToForm.targetId || !relatesToForm.relationType) { Message.warning('请填写完整'); return }
+  if (!relatesToForm.targetId) { Message.warning('请填写目标资源 ID'); return }
   relatesToLoading.value = true
   try {
-    await addRelatesTo({ source_id: props.resourceId, target_id: relatesToForm.targetId, relation_type: relatesToForm.relationType })
+    await addRelatesTo({ source_id: props.resourceId, target_id: relatesToForm.targetId, description: relatesToForm.description || null })
     Message.success('添加成功')
     showRelatesToModal.value = false
     fetchRelations()

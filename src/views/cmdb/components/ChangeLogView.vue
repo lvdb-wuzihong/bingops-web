@@ -20,8 +20,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getChangeLogs } from '../../api/changeLog'
-import type { IChangeLog } from '../../api/changeLog'
+import { getChangeLogs } from '../../../api/changeLog'
+import type { IChangeLog } from '../../../api/changeLog'
 
 const props = defineProps<{ resourceId: number }>()
 

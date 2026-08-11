@@ -35,8 +35,8 @@
 import { ref, reactive, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus } from '@arco-design/web-vue/es/icon'
-import * as tagApi from '../../api/tag'
-import type { IResourceTag } from '../../api/tag'
+import * as tagApi from '../../../api/tag'
+import type { IResourceTag } from '../../../api/tag'
 
 const props = defineProps<{ resourceId: number }>()
 

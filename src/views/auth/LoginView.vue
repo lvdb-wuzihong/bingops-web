@@ -28,7 +28,7 @@
         <p class="login-subtitle">智能运维管理平台</p>
       </div>
 
-      <a-form :model="form" :rules="rules" layout="vertical" @submit-success="handleLogin" ref="formRef">
+      <a-form :model="form" :rules="rules" layout="vertical" @submit-success="handleLogin">
         <a-form-item field="username" label="用户名" hide-label>
           <a-input
             v-model="form.username"
@@ -84,7 +84,6 @@ import { getFeishuLoginUrl } from '../../api/auth'
 
 const router = useRouter()
 const userStore = useUserStore()
-const formRef = ref()
 const loading = ref(false)
 
 const form = reactive({

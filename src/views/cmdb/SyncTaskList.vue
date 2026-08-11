@@ -116,21 +116,22 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
+import type { TableColumnData } from '@arco-design/web-vue'
 import { IconPlus, IconRefresh, IconEdit, IconDelete, IconSync } from '@arco-design/web-vue/es/icon'
 import { getSyncTasks, createSyncTask, updateSyncTask, deleteSyncTask, toggleSyncTask } from '../../api/syncTask'
 import type { ISyncTask, ISyncTaskCreate, ISyncTaskUpdate, ISyncTaskQuery } from '../../api/syncTask'
 
 const providerMap: Record<string, string> = { aliyun: '阿里云', aws: 'AWS', gcp: '谷歌云' }
 
-const columns = [
+const columns: TableColumnData[] = [
   { title: '任务名称', dataIndex: 'name', width: 200, ellipsis: true },
   { title: '类型', slotName: 'task_type', width: 90 },
   { title: '云厂商', slotName: 'provider', width: 100 },
   { title: '目标标识', dataIndex: 'target_id', width: 180, ellipsis: true },
   { title: '资源类型', slotName: 'resource_types', width: 220 },
-  { title: '调度周期', dataIndex: 'schedule', width: 130, render: ({ record }: { record: ISyncTask }) => record.schedule || '-' },
+  { title: '调度周期', dataIndex: 'schedule', width: 130, render: ({ record }) => (record as ISyncTask).schedule || '-' },
   { title: '启用', slotName: 'enabled', width: 80 },
-  { title: '描述', dataIndex: 'description', ellipsis: true, render: ({ record }: { record: ISyncTask }) => record.description || '-' },
+  { title: '描述', dataIndex: 'description', ellipsis: true, render: ({ record }) => (record as ISyncTask).description || '-' },
   { title: '操作', slotName: 'actions', width: 110 },
 ]
 
