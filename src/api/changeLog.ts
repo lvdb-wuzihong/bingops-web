@@ -4,6 +4,8 @@ import type { IPaginatedData } from '../types/common'
 export interface IChangeLog {
   id: number
   resource_id: number
+  // 后端直接返回资源名称（已删除资源也返回原名）
+  resource_name: string | null
   model_id: number | null
   model_code: string | null
   // 模型名称（v2 由 model_id 解析，兼容 v1 契约字段名）

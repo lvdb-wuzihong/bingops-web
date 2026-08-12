@@ -28,7 +28,7 @@
         </template>
         <template #resource_name="{ record }">
           <a-link @click="$router.push({ name: 'ResourceDetail', params: { id: String(record.resource_id) } })">
-            {{ resourceNameMap[record.resource_id] || `#${record.resource_id}` }}
+            {{ record.resource_name || `#${record.resource_id}` }}
           </a-link>
         </template>
         <template #model_name="{ record }">
@@ -59,29 +59,11 @@ import { Message } from '@arco-design/web-vue'
 import { IconRefresh } from '@arco-design/web-vue/es/icon'
 import { getChangeLogs } from '../../api/changeLog'
 import type { IChangeLog, IChangeLogQuery } from '../../api/changeLog'
-import { getResourceDetail } from '../../api/cmdb'
 
 const loading = ref(false)
 const logs = ref<IChangeLog[]>([])
 const queryParams = reactive<IChangeLogQuery>({ change_type: undefined, page: 1, page_size: 20 })
 const pagination = reactive({ current: 1, pageSize: 20, total: 0, showTotal: true, showPageSize: true })
-
-// 资源名称反查（后端审计响应不含 resource_name，仅返回 resource_id）
-const resourceNameMap = ref<Record<number, string>>({})
-
-async function resolveResourceNames(ids: number[]) {
-  const missing = [...new Set(ids)].filter((id) => resourceNameMap.value[id] === undefined)
-  await Promise.all(
-    missing.map(async (id) => {
-      try {
-        const res = await getResourceDetail(id)
-        resourceNameMap.value[id] = res.data.name
-      } catch {
-        // 资源不存在或无权限，展示 #id 兜底
-      }
-    }),
-  )
-}
 
 const columns = [
   { title: '资源名称', slotName: 'resource_name', width: 160, ellipsis: true },
@@ -105,7 +87,6 @@ async function fetchData() {
     const res = await getChangeLogs({ ...queryParams, page: pagination.current, page_size: pagination.pageSize })
     logs.value = res.data.items
     pagination.total = res.data.pagination.total
-    resolveResourceNames(res.data.items.map((l) => l.resource_id))
   } catch { Message.error('获取变更日志失败') } finally { loading.value = false }
 }
 
