@@ -72,19 +72,10 @@
           <a-button type="text" size="mini" @click="resetAllFilters">清除全部</a-button>
         </div>
 
-        <!-- 统计卡片 -->
-        <a-row :gutter="12" v-if="stats" class="stats-row">
+        <!-- 统计卡片：选中具体模型时展示该模型的资源数量 -->
+        <a-row :gutter="12" v-if="selectedModelId && stats" class="stats-row">
           <a-col :span="6">
-            <a-card :bordered="false" class="stat-card"><a-statistic title="资源总数" :value="stats.total" /></a-card>
-          </a-col>
-          <a-col :span="6">
-            <a-card :bordered="false" class="stat-card"><a-statistic title="运行中" :value="runningCount" :value-style="{ color: runningCount > 0 ? '#52c41a' : undefined }" /></a-card>
-          </a-col>
-          <a-col :span="6">
-            <a-card :bordered="false" class="stat-card"><a-statistic title="已停止" :value="stoppedCount" :value-style="{ color: stoppedCount > 0 ? '#ff4d4f' : undefined }" /></a-card>
-          </a-col>
-          <a-col :span="6">
-            <a-card :bordered="false" class="stat-card"><a-statistic title="模型数" :value="Object.keys(stats.by_model ?? {}).length" /></a-card>
+            <a-card :bordered="false" class="stat-card"><a-statistic title="资源数量" :value="selectedModelCount" /></a-card>
           </a-col>
         </a-row>
 
@@ -395,14 +386,10 @@ const loading = ref(false)
 const tableData = ref<ICmdbResource[]>([])
 const stats = ref<{ total: number; by_model: Record<string, number>; by_status: Record<string, number>; by_provider: Record<string, number> } | null>(null)
 
-// 统计卡片：运行中 = running/ready/succeeded，已停止 = stopped/failed
-const runningCount = computed(() => {
-  const s = stats.value?.by_status
-  return (s?.running ?? 0) + (s?.ready ?? 0) + (s?.succeeded ?? 0)
-})
-const stoppedCount = computed(() => {
-  const s = stats.value?.by_status
-  return (s?.stopped ?? 0) + (s?.failed ?? 0) + (s?.not_ready ?? 0)
+// 统计卡片：仅展示当前选中模型的资源数量（by_model 以 model_id 字符串为 key）
+const selectedModelCount = computed(() => {
+  if (!selectedModelId.value) return 0
+  return stats.value?.by_model?.[String(selectedModelId.value)] ?? 0
 })
 
 const pagination = reactive({ current: 1, pageSize: 15, total: 0, showTotal: true, showPageSize: true })
