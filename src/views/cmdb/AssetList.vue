@@ -14,7 +14,12 @@
           show-line
           block-node
           @select="onTreeSelect"
-        />
+        >
+          <template #title="{ key, title }">
+            <span>{{ title }}</span>
+            <span v-if="typeof key === 'number' && modelCount(key as number) > 0" class="tree-count">{{ modelCount(key as number) }}</span>
+          </template>
+        </a-tree>
         <a-button long type="outline" size="small" style="margin-top: 12px" @click="selectedModelId = undefined; selectedCategoryKeys = []; fetchResources()">
           查看全部资源
         </a-button>
@@ -276,6 +281,11 @@ const modelNameMap = computed(() => {
   allModels.value.forEach(m => { map[m.id] = m.name })
   return map
 })
+
+// 模型树节点资源数量（复用 stats.by_model，不额外请求）
+function modelCount(modelId: number): number {
+  return stats.value?.by_model?.[String(modelId)] ?? 0
+}
 
 // Build tree: category nodes -> model children
 const modelTreeData = computed(() => {
@@ -595,6 +605,15 @@ onMounted(async () => {
   background: $bg-card;
   border: 1px solid $border-color-light;
   height: fit-content;
+}
+
+.tree-count {
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: $font-size-xs;
+  color: $color-primary;
+  background: rgba(22, 119, 255, 0.08);
+  border-radius: 8px;
 }
 
 .table-panel {
