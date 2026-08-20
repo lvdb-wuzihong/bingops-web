@@ -69,3 +69,39 @@ export function getRelationsFrom(resourceId: number, description?: string) {
 export function getRelationsTo(resourceId: number, description?: string) {
   return request.get<IRelatesToRelation[]>(`/api/v1/cmdb/resources/${resourceId}/relations-to`, { params: { description } })
 }
+
+// ========== 拓扑子图 ==========
+
+export interface ITopologyNode {
+  id: number
+  name: string
+  model_id: number
+  model_code: string | null
+  model_name: string | null
+  provider: string | null
+  status: string
+  region: string | null
+  is_center: boolean
+}
+
+export interface ITopologyEdge {
+  id: number
+  relation_type: 'belongs_to' | 'relates_to'
+  source_id: number
+  target_id: number
+  description: string | null
+  kind?: string | null
+  source: string | null
+}
+
+export interface ITopologyData {
+  center_id: number
+  depth: number
+  truncated: boolean
+  nodes: ITopologyNode[]
+  edges: ITopologyEdge[]
+}
+
+export function getResourceTopology(resourceId: number, depth = 2) {
+  return request.get<ITopologyData>(`/api/v1/cmdb/resources/${resourceId}/topology`, { params: { depth } })
+}
