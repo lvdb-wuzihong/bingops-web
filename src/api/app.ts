@@ -58,3 +58,38 @@ export function updateApp(id: number, data: IBusinessAppUpdate) {
 export function deleteApp(id: number) {
   return request.delete<null>(`/api/v1/cmdb/apps/${id}`)
 }
+
+// ========== 应用-资源关联 ==========
+
+export interface IAppResource {
+  resource_id: number
+  name: string
+  provider: string
+  model_code: string
+  status: string
+  // tag=标签自动归集 manual=手动绑定
+  source: 'tag' | 'manual'
+}
+
+export interface IResourceApp {
+  app_id: number
+  app_code: string
+  name: string
+  source: 'tag' | 'manual'
+}
+
+export function getAppResources(appId: number) {
+  return request.get<IAppResource[]>(`/api/v1/cmdb/apps/${appId}/resources`)
+}
+
+export function bindAppResource(appId: number, resourceId: number) {
+  return request.post<null>(`/api/v1/cmdb/apps/${appId}/resources`, { resource_id: resourceId })
+}
+
+export function unbindAppResource(appId: number, resourceId: number) {
+  return request.delete<null>(`/api/v1/cmdb/apps/${appId}/resources/${resourceId}`)
+}
+
+export function getResourceApps(resourceId: number) {
+  return request.get<IResourceApp[]>(`/api/v1/cmdb/apps/by-resource/${resourceId}`)
+}

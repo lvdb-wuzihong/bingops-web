@@ -8,6 +8,7 @@
             <a-option value="create">创建</a-option>
             <a-option value="update">更新</a-option>
             <a-option value="delete">删除</a-option>
+            <a-option value="tag">标签</a-option>
           </a-select>
           <a-button @click="handleRefresh">
             <template #icon><icon-refresh /></template>
@@ -77,8 +78,8 @@ const columns = [
   { title: '时间', slotName: 'created_at', width: 170 },
 ]
 
-function changeTypeColor(t: string) { return t === 'create' ? 'green' : t === 'delete' ? 'red' : 'blue' }
-function changeTypeText(t: string) { return t === 'create' ? '创建' : t === 'delete' ? '删除' : '更新' }
+function changeTypeColor(t: string) { return t === 'create' ? 'green' : t === 'delete' ? 'red' : t === 'tag' ? 'purple' : 'blue' }
+function changeTypeText(t: string) { return t === 'create' ? '创建' : t === 'delete' ? '删除' : t === 'tag' ? '标签' : '更新' }
 function formatTime(t: string) { return new Date(t).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }
 
 async function fetchData() {

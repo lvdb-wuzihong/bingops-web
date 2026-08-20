@@ -27,6 +27,12 @@
             <a-descriptions-item label="地域">{{ resource.region || '-' }}</a-descriptions-item>
             <a-descriptions-item label="可用区">{{ resource.zone || '-' }}</a-descriptions-item>
             <a-descriptions-item label="来源"><a-tag size="small" :color="sourceColor">{{ sourceText }}</a-tag></a-descriptions-item>
+            <a-descriptions-item label="归属应用">
+              <a-space v-if="resourceApps.length" wrap>
+                <a-tag v-for="app in resourceApps" :key="app.app_id" size="small" :color="app.source === 'tag' ? 'green' : 'blue'">{{ app.name }}</a-tag>
+              </a-space>
+              <span v-else>-</span>
+            </a-descriptions-item>
             <a-descriptions-item label="资源版本">{{ resource.resource_version || '-' }}</a-descriptions-item>
             <a-descriptions-item label="同步时间">{{ resource.synced_at ? formatTime(resource.synced_at) : '-' }}</a-descriptions-item>
             <a-descriptions-item label="创建时间">{{ formatTime(resource.created_at) }}</a-descriptions-item>
@@ -139,6 +145,8 @@ import TagView from './components/TagView.vue'
 import ChangeLogView from './components/ChangeLogView.vue'
 import { getResourceDetail, updateResource } from '../../api/cmdb'
 import type { ICmdbResource, IResourceUpdate } from '../../api/cmdb'
+import { getResourceApps } from '../../api/app'
+import type { IResourceApp } from '../../api/app'
 import * as modelApi from '../../api/model'
 import type { IModelField } from '../../types/model'
 
@@ -156,6 +164,7 @@ let chartInstance: echarts.ECharts | null = null
 
 const modelFields = ref<IModelField[]>([])
 const modelName = ref('')
+const resourceApps = ref<IResourceApp[]>([])
 
 const providerMap: Record<string, string> = { aliyun: '阿里云', aws: 'AWS', gcp: '谷歌云', k8s: 'Kubernetes', manual: '手动录入' }
 const statusMap: Record<string, string> = { running: '运行中', ready: '就绪', not_ready: '未就绪', stopped: '已停止', pending: '启动中', failed: '异常', succeeded: '已完成', maintenance: '维护中', unknown: '未知' }
@@ -218,6 +227,11 @@ async function fetchDetail() {
         modelName.value = modelRes.data.name
       } catch { /* ignore */ }
     }
+    // 归属应用（应用-资源关联）
+    try {
+      const appRes = await getResourceApps(resourceId)
+      resourceApps.value = appRes.data
+    } catch { /* ignore */ }
   } catch { Message.error('获取资源详情失败') } finally { loading.value = false }
 }
 

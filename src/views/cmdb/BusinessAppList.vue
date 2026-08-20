@@ -28,6 +28,7 @@
         </template>
         <template #actions="{ record }">
           <a-space>
+            <a-button type="text" size="small" @click="openResources(record)"><template #icon><icon-apps /></template>资源</a-button>
             <a-button type="text" size="small" @click="handleEdit(record)"><template #icon><icon-edit /></template></a-button>
             <a-popconfirm content="确定删除该应用？" @ok="handleDelete(record.id)">
               <a-button type="text" size="small" status="danger"><template #icon><icon-delete /></template></a-button>
@@ -51,15 +52,46 @@
         <a-form-item field="description" label="描述"><a-textarea v-model="formData.description" placeholder="可选" :auto-size="{ minRows: 2, maxRows: 4 }" /></a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 应用关联资源抽屉 -->
+    <a-drawer v-model:visible="drawerVisible" :title="`关联资源 - ${drawerApp?.name ?? ''}`" :width="760" unmount-on-close>
+      <div class="bind-bar">
+        <a-input-number v-model="bindResourceId" placeholder="资源 ID" :min="1" hide-button style="width: 160px" />
+        <a-button type="primary" :loading="bindLoading" @click="handleBind">绑定资源</a-button>
+        <span class="bind-tip">仅支持服务级 CI（workload / 中间件 / 数据库等）</span>
+      </div>
+      <a-table :data="appResources" :loading="drawerLoading" :columns="resourceColumns" :pagination="false" row-key="resource_id" size="small">
+        <template #empty>
+          <a-empty description="暂无关联资源，可通过标签自动归集或手动绑定" />
+        </template>
+        <template #name="{ record }">
+          <a-link @click="$router.push({ name: 'ResourceDetail', params: { id: String(record.resource_id) } })">{{ record.name }}</a-link>
+        </template>
+        <template #model_code="{ record }"><a-tag size="small" color="arcoblue">{{ record.model_code }}</a-tag></template>
+        <template #provider="{ record }">{{ providerMap[record.provider] || record.provider }}</template>
+        <template #status="{ record }">{{ statusMap[record.status] || record.status }}</template>
+        <template #source="{ record }">
+          <a-tag size="small" :color="record.source === 'tag' ? 'green' : 'blue'">{{ record.source === 'tag' ? '标签归集' : '手动绑定' }}</a-tag>
+        </template>
+        <template #actions="{ record }">
+          <a-popconfirm content="解绑该资源？" @ok="handleUnbind(record.resource_id)">
+            <a-button type="text" size="small" status="danger"><template #icon><icon-delete /></template></a-button>
+          </a-popconfirm>
+        </template>
+      </a-table>
+    </a-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { IconPlus, IconEdit, IconDelete } from '@arco-design/web-vue/es/icon'
+import { IconPlus, IconEdit, IconDelete, IconApps } from '@arco-design/web-vue/es/icon'
 import * as appApi from '../../api/app'
-import type { IBusinessApp } from '../../api/app'
+import type { IBusinessApp, IAppResource } from '../../api/app'
+
+const providerMap: Record<string, string> = { aliyun: '阿里云', aws: 'AWS', gcp: '谷歌云', k8s: 'Kubernetes', manual: '手动录入' }
+const statusMap: Record<string, string> = { running: '运行中', ready: '就绪', not_ready: '未就绪', stopped: '已停止', pending: '启动中', failed: '异常', succeeded: '已完成', maintenance: '维护中', unknown: '未知' }
 
 const loading = ref(false)
 const apps = ref<IBusinessApp[]>([])
@@ -72,7 +104,7 @@ const columns = [
   { title: '负责人', dataIndex: 'owner', width: 100 },
   { title: '部门', dataIndex: 'department', width: 120 },
   { title: '标签', slotName: 'labels' },
-  { title: '操作', slotName: 'actions', width: 100 },
+  { title: '操作', slotName: 'actions', width: 140 },
 ]
 
 async function fetchData() {
@@ -127,6 +159,51 @@ async function handleDelete(id: number) {
   try { await appApi.deleteApp(id); Message.success('删除成功'); fetchData() } catch { Message.error('删除失败') }
 }
 
+// ========== 关联资源抽屉 ==========
+const drawerVisible = ref(false)
+const drawerApp = ref<IBusinessApp | null>(null)
+const drawerLoading = ref(false)
+const appResources = ref<IAppResource[]>([])
+const bindResourceId = ref<number | undefined>()
+const bindLoading = ref(false)
+
+const resourceColumns = [
+  { title: '资源名称', slotName: 'name', width: 200, ellipsis: true },
+  { title: '模型', slotName: 'model_code', width: 130 },
+  { title: '云厂商', slotName: 'provider', width: 90 },
+  { title: '状态', slotName: 'status', width: 80 },
+  { title: '来源', slotName: 'source', width: 100 },
+  { title: '操作', slotName: 'actions', width: 60 },
+]
+
+function openResources(app: IBusinessApp) {
+  drawerApp.value = app
+  drawerVisible.value = true
+  fetchAppResources()
+}
+
+async function fetchAppResources() {
+  if (!drawerApp.value) return
+  drawerLoading.value = true
+  try { const res = await appApi.getAppResources(drawerApp.value.id); appResources.value = res.data } catch { /* 拦截器已提示 */ } finally { drawerLoading.value = false }
+}
+
+async function handleBind() {
+  if (!drawerApp.value || !bindResourceId.value) { Message.warning('请输入资源 ID'); return }
+  bindLoading.value = true
+  try {
+    await appApi.bindAppResource(drawerApp.value.id, bindResourceId.value)
+    Message.success('绑定成功')
+    bindResourceId.value = undefined
+    fetchAppResources()
+  } catch { /* 拦截器已提示（如非服务级 CI） */ } finally { bindLoading.value = false }
+}
+
+async function handleUnbind(resourceId: number) {
+  if (!drawerApp.value) return
+  try { await appApi.unbindAppResource(drawerApp.value.id, resourceId); Message.success('解绑成功'); fetchAppResources() } catch { Message.error('解绑失败') }
+}
+
 onMounted(() => fetchData())
 </script>
 
@@ -136,4 +213,6 @@ onMounted(() => fetchData())
 .list-card { background: $bg-card; border: 1px solid $border-color-light; }
 .filter-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: $spacing-md; }
 .panel-title { font-size: $font-size-lg; font-weight: 600; color: $text-primary; }
+.bind-bar { display: flex; align-items: center; gap: $spacing-sm; margin-bottom: $spacing-md; }
+.bind-tip { font-size: $font-size-xs; color: $text-secondary; }
 </style>

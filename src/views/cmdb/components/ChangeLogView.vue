@@ -2,8 +2,8 @@
   <div class="changelog-view">
     <a-table :data="logs" :columns="columns" :pagination="false" :loading="loading" size="small" row-key="id">
       <template #change_type="{ record }">
-        <a-tag :size="'small'" :color="record.change_type === 'create' ? 'green' : record.change_type === 'delete' ? 'red' : 'blue'">
-          {{ record.change_type === 'create' ? '创建' : record.change_type === 'delete' ? '删除' : '更新' }}
+        <a-tag :size="'small'" :color="record.change_type === 'create' ? 'green' : record.change_type === 'delete' ? 'red' : record.change_type === 'tag' ? 'purple' : 'blue'">
+          {{ record.change_type === 'create' ? '创建' : record.change_type === 'delete' ? '删除' : record.change_type === 'tag' ? '标签' : '更新' }}
         </a-tag>
       </template>
       <template #old_value="{ record }">
