@@ -20,12 +20,6 @@
         @page-size-change="onPageSizeChange"
       >
         <template #app_code="{ record }"><a-tag size="small" color="arcoblue">{{ record.app_code }}</a-tag></template>
-        <template #labels="{ record }">
-          <a-space v-if="record.labels" wrap>
-            <a-tag v-for="(v, k) in record.labels" :key="k" size="small">{{ k }}: {{ v }}</a-tag>
-          </a-space>
-          <span v-else>-</span>
-        </template>
         <template #actions="{ record }">
           <a-space>
             <a-button type="text" size="small" @click="openResources(record)"><template #icon><icon-apps /></template>资源</a-button>
@@ -110,7 +104,6 @@ const columns = [
   { title: '团队', dataIndex: 'team', width: 120 },
   { title: '负责人', dataIndex: 'owner', width: 100 },
   { title: '部门', dataIndex: 'department', width: 120 },
-  { title: '标签', slotName: 'labels' },
   { title: '操作', slotName: 'actions', width: 140 },
 ]
 
