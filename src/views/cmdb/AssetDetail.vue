@@ -66,9 +66,6 @@
             <a-tab-pane key="changelog" title="变更记录">
               <ChangeLogView :resource-id="resourceId" />
             </a-tab-pane>
-            <a-tab-pane key="monitor" title="资源监控">
-              <div ref="monitorChartRef" class="monitor-chart"></div>
-            </a-tab-pane>
           </a-tabs>
         </a-card>
       </div>
@@ -131,14 +128,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart } from 'echarts/charts'
-import { TooltipComponent, GridComponent, LegendComponent } from 'echarts/components'
-import * as echarts from 'echarts/core'
 import { IconLeft, IconEdit } from '@arco-design/web-vue/es/icon'
 import RelationView from './components/RelationView.vue'
 import TagView from './components/TagView.vue'
@@ -150,8 +142,6 @@ import type { IResourceApp } from '../../api/app'
 import * as modelApi from '../../api/model'
 import type { IModelField } from '../../types/model'
 
-use([CanvasRenderer, LineChart, TooltipComponent, GridComponent, LegendComponent])
-
 const router = useRouter()
 const route = useRoute()
 const resourceId = Number(route.params.id)
@@ -159,8 +149,6 @@ const resourceId = Number(route.params.id)
 const loading = ref(false)
 const resource = ref<ICmdbResource | null>(null)
 const activeTab = ref('fields')
-const monitorChartRef = ref<HTMLElement>()
-let chartInstance: echarts.ECharts | null = null
 
 const modelFields = ref<IModelField[]>([])
 const modelName = ref('')
@@ -288,38 +276,8 @@ async function handleFormSubmit() {
   } catch { Message.error('编辑失败') } finally { formLoading.value = false }
 }
 
-// ========== 图表 ==========
-function initMonitorChart() {
-  if (!monitorChartRef.value) return
-  const chart = echarts.init(monitorChartRef.value)
-  chartInstance = chart
-  const hours = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
-  chart.setOption({
-    tooltip: { trigger: 'axis', backgroundColor: '#ffffff', borderColor: '#d6e4ff', textStyle: { color: '#1d39c4' } },
-    legend: { data: ['CPU', '内存', '磁盘IO'], textStyle: { color: '#597ef7' }, top: 0 },
-    grid: { left: 40, right: 20, top: 35, bottom: 25 },
-    xAxis: { type: 'category', data: hours, axisLine: { lineStyle: { color: '#d6e4ff' } }, axisLabel: { color: '#597ef7', interval: 3 } },
-    yAxis: { type: 'value', max: 100, axisLine: { show: false }, splitLine: { lineStyle: { color: '#e6f0ff' } }, axisLabel: { color: '#597ef7', formatter: '{value}%' } },
-    series: [
-      { name: 'CPU', type: 'line', smooth: true, data: [35,32,28,25,22,20,25,40,55,62,58,52,48,55,60,58,52,45,42,38,35,33,30,28], lineStyle: { color: '#1677ff', width: 2 }, itemStyle: { color: '#1677ff' }, areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{ offset: 0, color: 'rgba(22,119,255,0.15)' }, { offset: 1, color: 'rgba(22,119,255,0)' }]) } },
-      { name: '内存', type: 'line', smooth: true, data: [62,62,61,60,60,59,61,64,68,70,72,71,69,70,72,71,68,66,65,64,63,63,62,62], lineStyle: { color: '#2f54eb', width: 2 }, itemStyle: { color: '#2f54eb' } },
-      { name: '磁盘IO', type: 'line', smooth: true, data: [10,8,5,3,2,2,5,15,25,30,28,22,18,22,28,25,20,15,12,10,8,8,6,5], lineStyle: { color: '#52c41a', width: 2 }, itemStyle: { color: '#52c41a' } },
-    ],
-  })
-}
-
-function handleResize() { chartInstance?.resize() }
-
-onMounted(async () => {
-  await fetchDetail()
-  // init chart after tab switch
-  setTimeout(() => initMonitorChart(), 100)
-  window.addEventListener('resize', handleResize)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  chartInstance?.dispose()
+onMounted(() => {
+  fetchDetail()
 })
 </script>
 
@@ -375,6 +333,4 @@ onUnmounted(() => {
 .field-item { display: flex; flex-direction: column; gap: 2px; padding: $spacing-xs 0; }
 .field-key { font-size: $font-size-xs; color: $text-secondary; }
 .field-value { font-family: $font-mono; font-size: $font-size-sm; color: $text-body; word-break: break-all; white-space: pre-wrap; }
-
-.monitor-chart { height: 300px; }
 </style>

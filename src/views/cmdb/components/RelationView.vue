@@ -21,27 +21,11 @@
     </div>
 
     <!-- 拓扑图 -->
-    <div v-show="viewMode === 'graph'" class="topo-body">
-      <!-- 中心资源直接关系语义分组 -->
-      <div class="topo-sidebar">
-        <h5>关联关系</h5>
-        <template v-if="centerRelationGroups.length">
-          <div v-for="g in centerRelationGroups" :key="g.label" class="rel-group">
-            <div class="rel-group-label">{{ g.label }}</div>
-            <div v-for="item in g.items" :key="item.modelName" class="rel-group-item">
-              <span>{{ item.modelName }}</span>
-              <span class="rel-count">{{ item.count }}</span>
-            </div>
-          </div>
-        </template>
-        <p v-else class="rel-empty">当前资源暂无直接关系</p>
-      </div>
-      <div class="topo-main">
-        <a-spin :loading="topoLoading" style="width: 100%">
-          <div ref="graphRef" class="topo-chart"></div>
-        </a-spin>
-        <p class="graph-tip">层次布局：祖先在左、后代在右、关联在最右；拖拽平移、滚轮缩放，双击节点展开其一度关系。</p>
-      </div>
+    <div v-show="viewMode === 'graph'">
+      <a-spin :loading="topoLoading" style="width: 100%">
+        <div ref="graphRef" class="topo-chart"></div>
+      </a-spin>
+      <p class="graph-tip">拖拽平移、滚轮缩放；双击节点展开该节点的一度关系；蓝边=从属（子→父），绿边=关联。</p>
     </div>
 
     <!-- 列表管理 -->
@@ -157,7 +141,7 @@ import { IconPlus, IconDelete, IconRefresh } from '@arco-design/web-vue/es/icon'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { GraphChart } from 'echarts/charts'
-import { TooltipComponent } from 'echarts/components'
+import { TooltipComponent, LegendComponent } from 'echarts/components'
 import * as echarts from 'echarts/core'
 import {
   getChildren, getParents, addBelongsTo, removeBelongsTo,
@@ -167,7 +151,7 @@ import {
 import type { IBelongsToRelation, IRelatesToRelation, ITopologyData, ITopologyNode } from '../../../api/relationship'
 import { getResourceDetail } from '../../../api/cmdb'
 
-use([CanvasRenderer, GraphChart, TooltipComponent])
+use([CanvasRenderer, GraphChart, TooltipComponent, LegendComponent])
 
 const props = defineProps<{ resourceId: number }>()
 
@@ -185,121 +169,32 @@ function truncName(name: string): string {
   return name.length > 14 ? `${name.slice(0, 14)}…` : name
 }
 
-// ========== 层次布局：祖先在左、后代在右、关联在最右 ==========
-const CARD_W = 170
-const CARD_H = 46
-const COL_GAP = 100
-const ROW_GAP = 34
-
-function computeLayout(data: ITopologyData): Record<number, { x: number; y: number }> {
-  const parentsOf = new Map<number, number[]>()
-  const childrenOf = new Map<number, number[]>()
-  const push = (m: Map<number, number[]>, k: number, v: number) => { m.set(k, [...(m.get(k) || []), v]) }
-  for (const e of data.edges) {
-    if (e.relation_type !== 'belongs_to') continue
-    push(parentsOf, e.source_id, e.target_id)
-    push(childrenOf, e.target_id, e.source_id)
-  }
-  const level = new Map<number, number>([[data.center_id, 0]])
-  // 上游 BFS：祖先负层
-  let front = [data.center_id]
-  while (front.length) {
-    const next: number[] = []
-    for (const id of front) for (const p of parentsOf.get(id) || []) if (!level.has(p)) { level.set(p, (level.get(id) ?? 0) - 1); next.push(p) }
-    front = next
-  }
-  // 下游 BFS：后代正层
-  front = [data.center_id]
-  while (front.length) {
-    const next: number[] = []
-    for (const id of front) for (const c of childrenOf.get(id) || []) if (!level.has(c)) { level.set(c, (level.get(id) ?? 0) + 1); next.push(c) }
-    front = next
-  }
-  // 关联（relates_to）对端未布局者放最右列
-  let maxLevel = 0
-  level.forEach(l => { if (l > maxLevel) maxLevel = l })
-  for (const e of data.edges) {
-    if (e.relation_type !== 'relates_to') continue
-    for (const id of [e.source_id, e.target_id]) {
-      if (id !== data.center_id && !level.has(id)) level.set(id, maxLevel + 1)
-    }
-  }
-  // 按层居中垂直排布
-  const byLevel = new Map<number, number[]>()
-  level.forEach((l, id) => { byLevel.set(l, [...(byLevel.get(l) || []), id]) })
-  const pos: Record<number, { x: number; y: number }> = {}
-  byLevel.forEach((ids, l) => {
-    ids.sort((a, b) => a - b)
-    ids.forEach((id, i) => {
-      pos[id] = { x: l * (CARD_W + COL_GAP), y: (i - (ids.length - 1) / 2) * (CARD_H + ROW_GAP) }
-    })
-  })
-  return pos
-}
-
-// 中心资源直接关系的语义分组（左侧栏）
-const centerRelationGroups = computed(() => {
-  const data = topoData.value
-  if (!data) return [] as { label: string; items: { modelName: string; count: number }[] }[]
-  const nodeById = new Map(data.nodes.map(n => [n.id, n]))
-  const groups = new Map<string, Map<string, number>>()
-  for (const e of data.edges) {
-    let counterpartId: number | null = null
-    let label = ''
-    if (e.relation_type === 'belongs_to') {
-      if (e.source_id === data.center_id) { counterpartId = e.target_id; label = e.description || '属于' }
-      else if (e.target_id === data.center_id) { counterpartId = e.source_id; label = e.description || '组成' }
-    } else if (e.source_id === data.center_id || e.target_id === data.center_id) {
-      counterpartId = e.source_id === data.center_id ? e.target_id : e.source_id
-      label = e.description || e.kind || '关联'
-    }
-    if (counterpartId === null) continue
-    const counterpart = nodeById.get(counterpartId)
-    const modelName = counterpart?.model_name || counterpart?.model_code || '未知模型'
-    const items = groups.get(label) || new Map<string, number>()
-    items.set(modelName, (items.get(modelName) || 0) + 1)
-    groups.set(label, items)
-  }
-  return [...groups.entries()].map(([label, items]) => ({
-    label,
-    items: [...items.entries()].map(([modelName, count]) => ({ modelName, count })),
-  }))
-})
-
 function renderGraph() {
   if (!graphRef.value || !topoData.value) return
   if (!chartInstance) chartInstance = echarts.init(graphRef.value)
 
   const { nodes, edges } = topoData.value
-  const pos = computeLayout(topoData.value)
+  const categoryNames: string[] = []
+  const catIndex = (n: ITopologyNode): number => {
+    const key = n.model_name || n.model_code || '未知模型'
+    let i = categoryNames.indexOf(key)
+    if (i === -1) { categoryNames.push(key); i = categoryNames.length - 1 }
+    return i
+  }
 
-  // 卡片式节点：白底圆角矩形 + 名称/模型两行富文本
   const data = nodes.map(n => ({
     id: String(n.id),
-    name: n.name,
-    x: pos[n.id]?.x ?? 0,
-    y: pos[n.id]?.y ?? 0,
-    symbol: 'roundRect',
-    symbolSize: [CARD_W, CARD_H],
-    itemStyle: n.is_center
-      ? { color: '#ffffff', borderColor: '#1677ff', borderWidth: 2, shadowBlur: 8, shadowColor: 'rgba(22,119,255,0.25)' }
-      : { color: '#ffffff', borderColor: '#d6e4ff', borderWidth: 1, shadowBlur: 4, shadowColor: 'rgba(22,119,255,0.08)' },
-    label: {
-      show: true,
-      position: 'inside',
-      formatter: `{name|${truncName(n.name)}}\n{model|${truncName(n.model_name || n.model_code || '')}}`,
-      rich: {
-        name: { fontSize: 12, color: '#1d2129', fontWeight: 600, lineHeight: 20 },
-        model: { fontSize: 10, color: '#86909c', lineHeight: 14 },
-      },
-    },
+    name: truncName(n.name),
+    symbolSize: n.is_center ? 42 : 26,
+    category: catIndex(n),
+    itemStyle: n.is_center ? { borderColor: '#1677ff', borderWidth: 3 } : undefined,
     nodeInfo: n,
   }))
   const links = edges.map(e => ({
     source: String(e.source_id),
     target: String(e.target_id),
     edgeLabel: e.description || (e.kind ? e.kind : e.relation_type === 'belongs_to' ? '从属' : '关联'),
-    lineStyle: { color: e.relation_type === 'belongs_to' ? '#597ef7' : '#52c41a', width: 1.5, curveness: 0 },
+    lineStyle: { color: e.relation_type === 'belongs_to' ? '#1677ff' : '#52c41a', width: 1.5, curveness: 0.12 },
     edgeInfo: e,
   }))
 
@@ -326,21 +221,25 @@ function renderGraph() {
         return ''
       },
     },
+    legend: categoryNames.length > 1 ? { data: categoryNames, top: 0, textStyle: { color: '#597ef7' } } : undefined,
     series: [{
       type: 'graph',
-      layout: 'none',
+      layout: 'force',
       data,
       links,
+      categories: categoryNames.map(name => ({ name })),
       roam: true,
       draggable: true,
       edgeSymbol: ['none', 'arrow'],
       edgeSymbolSize: 7,
+      label: { show: true, position: 'bottom', fontSize: 11, color: '#4e5969' },
       edgeLabel: {
         show: true,
         fontSize: 10,
         color: '#86909c',
         formatter: (p: unknown) => String((p as { data?: { edgeLabel?: string } }).data?.edgeLabel ?? ''),
       },
+      force: { repulsion: 260, edgeLength: 110, gravity: 0.06 },
       emphasis: { focus: 'adjacency', lineStyle: { width: 3 } },
     }],
   }, true)
@@ -539,44 +438,6 @@ onUnmounted(() => {
 
 .graph-toolbar { display: flex; align-items: center; gap: $spacing-sm; }
 .toolbar-label { font-size: $font-size-xs; color: $text-secondary; }
-
-.topo-body { display: flex; gap: $spacing-sm; align-items: stretch; }
-
-.topo-sidebar {
-  width: 200px;
-  flex-shrink: 0;
-  background: $bg-card;
-  border: 1px solid $border-color-light;
-  border-radius: $radius-md;
-  padding: $spacing-sm;
-  max-height: 520px;
-  overflow-y: auto;
-
-  h5 { margin: 0 0 $spacing-sm; font-size: $font-size-sm; font-weight: 600; color: $text-primary; }
-}
-
-.rel-group { margin-bottom: $spacing-sm; }
-.rel-group-label { font-size: $font-size-xs; color: $text-secondary; margin-bottom: 4px; }
-.rel-group-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: $font-size-sm;
-  color: $text-body;
-  padding: 2px 0;
-}
-.rel-count {
-  min-width: 20px;
-  text-align: center;
-  font-size: $font-size-xs;
-  color: $text-secondary;
-  background: rgba(22, 119, 255, 0.08);
-  border-radius: 4px;
-  padding: 0 4px;
-}
-.rel-empty { font-size: $font-size-xs; color: $text-disabled; }
-
-.topo-main { flex: 1; min-width: 0; }
 
 .topo-chart {
   width: 100%;
