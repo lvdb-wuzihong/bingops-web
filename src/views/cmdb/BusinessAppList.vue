@@ -59,8 +59,11 @@
         <a-input-number v-model="bindResourceId" placeholder="资源 ID" :min="1" hide-button style="width: 160px" />
         <a-button type="primary" :loading="bindLoading" @click="handleBind">绑定资源</a-button>
         <span class="bind-tip">仅支持服务级 CI（workload / 中间件 / 数据库等）</span>
+        <a-select v-model="envFilter" placeholder="全部环境" allow-clear style="width: 130px; margin-left: auto">
+          <a-option v-for="opt in envOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-option>
+        </a-select>
       </div>
-      <a-table :data="appResources" :loading="drawerLoading" :columns="resourceColumns" :pagination="false" row-key="resource_id" size="small">
+      <a-table :data="filteredResources" :loading="drawerLoading" :columns="resourceColumns" :pagination="false" row-key="resource_id" size="small">
         <template #empty>
           <a-empty description="暂无关联资源，可通过标签自动归集或手动绑定" />
         </template>
@@ -68,6 +71,10 @@
           <a-link @click="$router.push({ name: 'ResourceDetail', params: { id: String(record.resource_id) } })">{{ record.name }}</a-link>
         </template>
         <template #model_code="{ record }"><a-tag size="small" color="arcoblue">{{ record.model_code }}</a-tag></template>
+        <template #env="{ record }">
+          <a-tag v-if="record.env" size="small" :color="envColor(record.env)">{{ record.env }}</a-tag>
+          <span v-else>-</span>
+        </template>
         <template #provider="{ record }">{{ providerMap[record.provider] || record.provider }}</template>
         <template #status="{ record }">{{ statusMap[record.status] || record.status }}</template>
         <template #source="{ record }">
@@ -84,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconEdit, IconDelete, IconApps } from '@arco-design/web-vue/es/icon'
 import * as appApi from '../../api/app'
@@ -170,14 +177,39 @@ const bindLoading = ref(false)
 const resourceColumns = [
   { title: '资源名称', slotName: 'name', width: 200, ellipsis: true },
   { title: '模型', slotName: 'model_code', width: 130 },
+  { title: '环境', slotName: 'env', width: 90 },
   { title: '云厂商', slotName: 'provider', width: 90 },
   { title: '状态', slotName: 'status', width: 80 },
   { title: '来源', slotName: 'source', width: 100 },
   { title: '操作', slotName: 'actions', width: 60 },
 ]
 
+// 环境维度：env 来自资源 env/k8s:env 标签，客户端即时筛选
+const envFilter = ref<string | undefined>()
+
+const envOptions = computed(() => {
+  const envs = [...new Set(appResources.value.map(r => r.env).filter((e): e is string => !!e))].sort()
+  const opts = envs.map(e => ({ value: e, label: e }))
+  if (appResources.value.some(r => !r.env)) opts.push({ value: '__none__', label: '未设置' })
+  return opts
+})
+
+const filteredResources = computed(() => {
+  if (!envFilter.value) return appResources.value
+  if (envFilter.value === '__none__') return appResources.value.filter(r => !r.env)
+  return appResources.value.filter(r => r.env === envFilter.value)
+})
+
+function envColor(env: string): string {
+  if (/^prod/i.test(env)) return 'red'
+  if (/^(stag|pre)/i.test(env)) return 'orange'
+  if (/^(test|dev|sit|uat)/i.test(env)) return 'green'
+  return 'blue'
+}
+
 function openResources(app: IBusinessApp) {
   drawerApp.value = app
+  envFilter.value = undefined
   drawerVisible.value = true
   fetchAppResources()
 }

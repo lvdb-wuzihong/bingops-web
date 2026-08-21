@@ -67,6 +67,9 @@ export interface IAppResource {
   provider: string
   model_code: string
   status: string
+  // env 由后端从资源 env/k8s:env 标签实时解析，未打标签为 null
+  env: string | null
+  region: string | null
   // tag=标签自动归集 manual=手动绑定
   source: 'tag' | 'manual'
 }
@@ -78,8 +81,8 @@ export interface IResourceApp {
   source: 'tag' | 'manual'
 }
 
-export function getAppResources(appId: number) {
-  return request.get<IAppResource[]>(`/api/v1/cmdb/apps/${appId}/resources`)
+export function getAppResources(appId: number, env?: string) {
+  return request.get<IAppResource[]>(`/api/v1/cmdb/apps/${appId}/resources`, { params: { env } })
 }
 
 export function bindAppResource(appId: number, resourceId: number) {
