@@ -49,6 +49,12 @@
           <a-menu-item key="ChangeLogList">变更审计</a-menu-item>
           <a-menu-item key="SyncTaskList">同步任务</a-menu-item>
         </a-sub-menu>
+        <a-sub-menu key="Jobs">
+          <template #icon><icon-code /></template>
+          <template #title>作业管理</template>
+          <a-menu-item key="RunbookList">Runbook 管理</a-menu-item>
+          <a-menu-item key="JobExecutionList">执行记录</a-menu-item>
+        </a-sub-menu>
         <a-menu-item key="Deploy">
           <template #icon><icon-cloud-download /></template>
           部署管理
@@ -163,6 +169,7 @@ import {
   IconDashboard,
   IconStorage,
   IconCloudDownload,
+  IconCode,
   IconBarChart,
   IconFile,
   IconSettings,

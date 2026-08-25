@@ -78,10 +78,10 @@ const routes: RouteRecordRaw[] = [
         ],
       },
       {
-        path: 'deploy',
-        name: 'Deploy',
-        redirect: '/deploy/runbooks',
-        meta: { title: '部署管理', icon: 'icon-cloud-download' },
+        path: 'jobs',
+        name: 'Jobs',
+        redirect: '/jobs/runbooks',
+        meta: { title: '作业管理', icon: 'icon-code' },
         children: [
           {
             path: 'runbooks',
@@ -102,6 +102,12 @@ const routes: RouteRecordRaw[] = [
             meta: { title: '执行详情', hidden: true },
           },
         ],
+      },
+      {
+        path: 'deploy',
+        name: 'Deploy',
+        component: () => import('../views/deploy/DeployView.vue'),
+        meta: { title: '部署管理', icon: 'icon-cloud-download' },
       },
       {
         path: 'monitor',
