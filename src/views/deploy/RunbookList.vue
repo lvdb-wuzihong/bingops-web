@@ -100,7 +100,7 @@
           </a-col>
           <a-col :span="12">
             <a-form-item field="connectionText" label="连接配置（JSON，可选，仅存钥匙名）">
-              <a-textarea v-model="formData.connectionText" placeholder='{"vault_key": "ssh-prod"}' :auto-size="{ minRows: 2, maxRows: 8 }" />
+              <a-textarea v-model="formData.connectionText" placeholder='{"ssh_user": "ops", "ssh_key_ref": "prod-node-key", "become": true}' :auto-size="{ minRows: 2, maxRows: 8 }" />
             </a-form-item>
           </a-col>
         </a-row>
