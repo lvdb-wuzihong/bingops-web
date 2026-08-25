@@ -36,6 +36,12 @@
           <p class="rb-desc">{{ record.description || '-' }}</p>
         </template>
         <template #category="{ record }">{{ record.category || '-' }}</template>
+        <template #target_models="{ record }">
+          <a-space wrap size="mini" v-if="(record.target_models || []).length">
+            <a-tag v-for="code in record.target_models" :key="code" size="small">{{ code }}</a-tag>
+          </a-space>
+          <span v-else class="default-models">默认 ecs / compute</span>
+        </template>
         <template #risk_level="{ record }">
           <a-tag size="small" :color="riskLevel(record.risk_level).color">{{ riskLevel(record.risk_level).text }}</a-tag>
         </template>
@@ -78,6 +84,11 @@
           <a-col :span="12"><a-form-item field="auto_rollback" label="失败自动回滚"><a-switch v-model="formData.auto_rollback" /></a-form-item></a-col>
         </a-row>
         <a-form-item field="description" label="描述"><a-textarea v-model="formData.description" placeholder="可选" :auto-size="{ minRows: 2, maxRows: 4 }" /></a-form-item>
+        <a-form-item field="targetModels" label="目标模型白名单">
+          <a-select v-model="formData.targetModels" multiple allow-search placeholder="选择允许作为执行目标的模型；留空默认 aliyun_ecs / gcp_compute">
+            <a-option v-for="opt in modelOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-option>
+          </a-select>
+        </a-form-item>
         <a-form-item field="stepsText" label="步骤编排（JSON 数组，必填）">
           <a-textarea v-model="formData.stepsText" placeholder='[{"key": "deploy", "name": "部署", "type": "ansible", "playbook": "playbooks/deploy.yml", "rollbackable": true}]' :auto-size="{ minRows: 4, maxRows: 12 }" />
         </a-form-item>
@@ -109,6 +120,7 @@ import { IconPlus, IconEdit, IconDelete, IconRefresh, IconPlayArrow, IconCode } 
 import * as jobApi from '../../api/job'
 import { riskLevel } from '../../api/job'
 import type { IRunbook } from '../../api/job'
+import { getModels } from '../../api/model'
 import ExecuteJobModal from './components/ExecuteJobModal.vue'
 
 const router = useRouter()
@@ -121,6 +133,7 @@ const pagination = reactive({ current: 1, pageSize: 15, total: 0, showTotal: tru
 const columns = [
   { title: '名称', slotName: 'name', width: 240, ellipsis: true },
   { title: '分类', slotName: 'category', width: 100 },
+  { title: '目标模型', slotName: 'target_models', width: 160 },
   { title: '风险', slotName: 'risk_level', width: 90 },
   { title: '版本', slotName: 'version', width: 70 },
   { title: '启用', slotName: 'is_active', width: 70 },
@@ -167,6 +180,7 @@ const formRef = ref()
 
 const formData = reactive({
   name: '', category: '', description: '', risk_level: 'low', auto_rollback: false,
+  targetModels: [] as string[],
   stepsText: '', paramsSchemaText: '', connectionText: '',
 })
 
@@ -190,7 +204,7 @@ function parseJson(text: string, label: string, opts?: { array?: boolean }): Rec
 
 function handleCreate() {
   editingId.value = null
-  Object.assign(formData, { name: '', category: '', description: '', risk_level: 'low', auto_rollback: false, stepsText: '', paramsSchemaText: '', connectionText: '' })
+  Object.assign(formData, { name: '', category: '', description: '', risk_level: 'low', auto_rollback: false, targetModels: [], stepsText: '', paramsSchemaText: '', connectionText: '' })
   formVisible.value = true
 }
 
@@ -199,6 +213,7 @@ function handleEdit(record: IRunbook) {
   Object.assign(formData, {
     name: record.name, category: record.category || '', description: record.description || '',
     risk_level: record.risk_level, auto_rollback: record.auto_rollback,
+    targetModels: [...(record.target_models || [])],
     stepsText: JSON.stringify(record.steps, null, 2),
     paramsSchemaText: Object.keys(record.params_schema).length ? JSON.stringify(record.params_schema, null, 2) : '',
     connectionText: Object.keys(record.connection).length ? JSON.stringify(record.connection, null, 2) : '',
@@ -222,6 +237,7 @@ async function handleFormSubmit() {
       await jobApi.updateRunbook(editingId.value, {
         name: formData.name, category: formData.category || null, description: formData.description || null,
         risk_level: formData.risk_level, auto_rollback: formData.auto_rollback,
+        target_models: formData.targetModels.length ? formData.targetModels : null,
         steps: steps as Record<string, unknown>[],
         params_schema: paramsSchema as Record<string, unknown>,
         connection: connection as Record<string, unknown>,
@@ -231,6 +247,7 @@ async function handleFormSubmit() {
       await jobApi.createRunbook({
         name: formData.name, category: formData.category || null, description: formData.description || null,
         risk_level: formData.risk_level, auto_rollback: formData.auto_rollback,
+        target_models: formData.targetModels.length ? formData.targetModels : null,
         steps: steps as Record<string, unknown>[],
         params_schema: paramsSchema as Record<string, unknown>,
         connection: connection as Record<string, unknown>,
@@ -259,7 +276,20 @@ function onExecuted(executionId: number) {
   router.push({ name: 'JobExecutionDetail', params: { id: String(executionId) } })
 }
 
-onMounted(fetchData)
+// 模型选项（目标模型白名单下拉用）
+const modelOptions = ref<{ value: string; label: string }[]>([])
+
+async function fetchModelOptions() {
+  try {
+    const res = await getModels()
+    modelOptions.value = res.data.map(m => ({ value: m.code, label: `${m.name}（${m.code}）` }))
+  } catch { /* ignore */ }
+}
+
+onMounted(() => {
+  fetchData()
+  fetchModelOptions()
+})
 </script>
 
 <style scoped lang="scss">
@@ -272,6 +302,7 @@ onMounted(fetchData)
 
 .rb-name { font-weight: 500; color: $text-primary; }
 .rb-desc { margin: 2px 0 0; font-size: $font-size-xs; color: $text-secondary; }
+.default-models { font-size: $font-size-xs; color: $text-secondary; }
 
 .empty-state {
   display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 0; gap: 8px;

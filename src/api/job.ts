@@ -11,6 +11,8 @@ export interface IRunbook {
   params_schema: Record<string, unknown>
   steps: Record<string, unknown>[]
   connection: Record<string, unknown>
+  // 目标模型 code 白名单，空/null 时后端默认 [aliyun_ecs, gcp_compute]
+  target_models: string[] | null
   version: number
   risk_level: string
   auto_rollback: boolean
@@ -27,6 +29,7 @@ export interface IRunbookCreate {
   params_schema?: Record<string, unknown>
   steps: Record<string, unknown>[]
   connection?: Record<string, unknown>
+  target_models?: string[] | null
   risk_level?: string
   auto_rollback?: boolean
 }
@@ -38,6 +41,7 @@ export interface IRunbookUpdate {
   params_schema?: Record<string, unknown>
   steps?: Record<string, unknown>[]
   connection?: Record<string, unknown>
+  target_models?: string[] | null
   risk_level?: string
   auto_rollback?: boolean
   is_active?: boolean
