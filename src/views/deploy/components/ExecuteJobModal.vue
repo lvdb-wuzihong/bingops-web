@@ -10,6 +10,9 @@
       </a-form-item>
       <a-form-item field="code_ref" label="代码版本（git tag）">
         <a-input v-model="formData.code_ref" placeholder="如：v1.0.0" />
+        <template #extra>
+          <span class="code-ref-tip">runner 将按此 tag 克隆约定 GitLab 仓库执行 playbook；后端不校验 tag 存在性，克隆失败会回报为执行失败</span>
+        </template>
       </a-form-item>
       <a-form-item field="target_ids" label="目标资源">
         <a-select
@@ -118,3 +121,9 @@ async function handleSubmit() {
   } catch { /* 拦截器已提示 */ } finally { loading.value = false }
 }
 </script>
+
+<style scoped lang="scss">
+@use '../../../assets/styles/variables' as *;
+
+.code-ref-tip { font-size: $font-size-xs; color: $text-secondary; }
+</style>
