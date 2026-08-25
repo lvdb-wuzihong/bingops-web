@@ -80,8 +80,28 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'deploy',
         name: 'Deploy',
-        component: () => import('../views/deploy/DeployView.vue'),
+        redirect: '/deploy/runbooks',
         meta: { title: '部署管理', icon: 'icon-cloud-download' },
+        children: [
+          {
+            path: 'runbooks',
+            name: 'RunbookList',
+            component: () => import('../views/deploy/RunbookList.vue'),
+            meta: { title: 'Runbook 管理' },
+          },
+          {
+            path: 'executions',
+            name: 'JobExecutionList',
+            component: () => import('../views/deploy/JobExecutionList.vue'),
+            meta: { title: '执行记录' },
+          },
+          {
+            path: 'executions/:id',
+            name: 'JobExecutionDetail',
+            component: () => import('../views/deploy/JobExecutionDetail.vue'),
+            meta: { title: '执行详情', hidden: true },
+          },
+        ],
       },
       {
         path: 'monitor',
