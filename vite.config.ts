@@ -14,8 +14,9 @@ export default defineConfig({
     open: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'https://bingops-api.povison-inc.com',
         changeOrigin: true,
+        secure: true,
       },
     },
   },
