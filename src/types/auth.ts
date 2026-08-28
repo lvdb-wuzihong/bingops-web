@@ -25,7 +25,8 @@ export interface ICurrentUser {
   display_name: string | null
   is_active: boolean
   is_superuser: boolean
-  roles: IRoleBrief[]
+  // 角色 code 列表（后端契约 v16 后为字符串数组）
+  roles: string[]
   permissions: string[]
 }
 
@@ -33,11 +34,4 @@ export interface ICurrentUser {
 export interface IChangePasswordRequest {
   old_password: string
   new_password: string
-}
-
-// 角色简要信息（嵌套在用户信息中）
-export interface IRoleBrief {
-  id: number
-  code: string
-  name: string
 }

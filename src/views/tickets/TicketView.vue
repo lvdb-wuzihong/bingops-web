@@ -99,8 +99,8 @@
           </a-col>
           <a-col :span="8">
             <a-form-item field="assignee_id" label="处理人">
-              <a-select v-model="formData.assignee_id" placeholder="可选" allow-clear show-search :filter-option="filterUserOption">
-                <a-option v-for="u in users" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</a-option>
+              <a-select v-model="formData.assignee_id" placeholder="可选" allow-clear allow-search>
+                <a-option v-for="o in assigneeOptions" :key="o.id" :value="o.id">{{ o.label }}</a-option>
               </a-select>
             </a-form-item>
           </a-col>
@@ -139,6 +139,7 @@
             </a-col>
           </a-row>
           <p v-if="formData.group_id && !formData.assignee_id" class="form-hint">未指派处理人时，将按该组当日值班 tier1 自动轮转派单</p>
+          <p v-if="formData.group_id && assigneeCandidates" class="form-hint">处理人候选已联动：组成员 + 当日值班（{{ assigneeCandidates.length }} 人）</p>
         </template>
 
         <!-- 变更工单：runbook 关联 + 变更上下文检查 -->
@@ -370,7 +371,7 @@ import * as ticketApi from '../../api/ticket'
 import type { ITicket, ITicketDetail, ITicketComment, IFreeze, IChangeContextResource } from '../../api/ticket'
 import * as metaApi from '../../api/ticketMeta'
 import { DIFFICULTY_MAP } from '../../api/ticketMeta'
-import type { ICatalogItem, ITicketGroup } from '../../api/ticketMeta'
+import type { ICatalogItem, ITicketGroup, IAssigneeCandidate } from '../../api/ticketMeta'
 import * as jobApi from '../../api/job'
 import { executionStatus } from '../../api/job'
 import type { IRunbook } from '../../api/job'
@@ -535,6 +536,27 @@ const formData = reactive({
   description: '',
 })
 
+// 处理组→处理人联动：选定处理组后候选人 = 组成员 ∪ 当日值班三线
+const assigneeCandidates = ref<IAssigneeCandidate[] | null>(null)
+
+watch(() => formData.group_id, async (gid) => {
+  assigneeCandidates.value = null
+  if (!gid) return
+  try { assigneeCandidates.value = (await metaApi.getGroupCandidates(gid)).data } catch { /* ignore */ }
+})
+
+const assigneeOptions = computed(() => {
+  const base = assigneeCandidates.value
+    ? assigneeCandidates.value.map(c => ({ id: c.id, label: c.display_name || c.username }))
+    : users.value.map(u => ({ id: u.id, label: u.display_name || u.username }))
+  // 已选处理人不在候选中时保留回显
+  if (formData.assignee_id && !base.some(o => o.id === formData.assignee_id)) {
+    const u = users.value.find(x => x.id === formData.assignee_id)
+    if (u) base.push({ id: u.id, label: u.display_name || u.username })
+  }
+  return base
+})
+
 // 选择目录事项后预填默认类型/默认 runbook（后端同样会应用默认值）
 watch(() => formData.catalog_item_id, (cid) => {
   if (!cid) return
@@ -593,6 +615,7 @@ function handleAdd() {
     runbook_id: undefined, code_ref: '', jobParamsText: '', description: '',
   })
   changeContext.value = []
+  assigneeCandidates.value = null
   fetchRunbookOptions()
   fetchMetaOptions()
   searchTargetResources('')

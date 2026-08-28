@@ -1,4 +1,3 @@
-import type { IRoleBrief } from './auth'
 
 // 用户信息
 export interface IUser {
@@ -8,7 +7,7 @@ export interface IUser {
   display_name: string | null
   is_active: boolean
   is_superuser: boolean
-  roles: IRoleBrief[]
+  roles: string[]
   created_at: string
   updated_at: string
 }

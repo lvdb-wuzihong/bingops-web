@@ -30,8 +30,8 @@
       >
         <template #roles="{ record }">
           <a-space wrap>
-            <a-tag v-for="role in record.roles" :key="role.code" size="small" color="arcoblue">
-              {{ role.name }}
+            <a-tag v-for="code in record.roles" :key="code" size="small" color="arcoblue">
+              {{ roleNameMap[code] || code }}
             </a-tag>
             <span v-if="!record.roles?.length" class="text-muted">未分配</span>
           </a-space>
@@ -129,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import type { IUser } from '../../types/user'
 import type { IRole } from '../../types/role'
@@ -230,12 +230,21 @@ const roleTargetUser = ref<IUser | null>(null)
 const selectedRoleCodes = ref<string[]>([])
 const allRoles = ref<IRole[]>([])
 
+// 角色 code→名称映射（列表列渲染用）
+const roleNameMap = computed(() => {
+  const m: Record<string, string> = {}
+  allRoles.value.forEach(r => { m[r.code] = r.name })
+  return m
+})
+
+async function fetchRoles() {
+  try { allRoles.value = (await getRoleList()).data } catch { /* ignore */ }
+}
+
 async function handleAssignRoles(record: IUser) {
   roleTargetUser.value = record
-  selectedRoleCodes.value = record.roles.map((r) => r.code)
-  // 加载角色列表
-  const res = await getRoleList()
-  allRoles.value = res.data
+  selectedRoleCodes.value = [...record.roles]
+  await fetchRoles()
   roleVisible.value = true
 }
 
@@ -250,7 +259,7 @@ async function handleRoleSubmit() {
   } finally { roleLoading.value = false }
 }
 
-onMounted(fetchData)
+onMounted(() => { fetchData(); fetchRoles() })
 </script>
 
 <style scoped lang="scss">

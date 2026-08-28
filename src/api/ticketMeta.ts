@@ -108,6 +108,17 @@ export function deleteGroup(id: number) {
   return request.delete<null>(`/api/v1/ticket-groups/${id}`)
 }
 
+// 处理人候选人：组成员 ∪ 当日值班三线（建单表单处理组→处理人联动）
+export interface IAssigneeCandidate {
+  id: number
+  username: string
+  display_name: string | null
+}
+
+export function getGroupCandidates(groupId: number) {
+  return request.get<IAssigneeCandidate[]>(`/api/v1/ticket-groups/${groupId}/candidates`)
+}
+
 // ========== 值班表 ==========
 
 export interface IOncallSchedule {
