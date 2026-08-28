@@ -20,6 +20,19 @@
           <a-select v-model="filters.catalog_item_id" placeholder="服务目录" allow-clear show-search style="width: 180px" @change="handleSearch">
             <a-option v-for="c in catalogLeafOptions" :key="c.id" :value="c.id">{{ c.label }}</a-option>
           </a-select>
+          <a-select
+            v-model="filters.target_resource_id"
+            placeholder="目标资源"
+            allow-clear
+            allow-search
+            :filter-option="false"
+            :loading="filterResSearching"
+            style="width: 180px"
+            @search="searchFilterResources"
+            @change="handleSearch"
+          >
+            <a-option v-for="r in filterResourceOptions" :key="r.id" :value="r.id">{{ r.name }}（{{ r.model_code || '-' }}）</a-option>
+          </a-select>
           <a-button @click="openFreezeDrawer">
             <template #icon><icon-safe /></template>封禁窗口
           </a-button>
@@ -92,18 +105,19 @@
             </a-form-item>
           </a-col>
         </a-row>
-        <a-form-item v-if="!editingId" field="related_resource_id" label="关联资源">
+        <a-form-item v-if="!editingId" field="target_resource_ids" :label="targetRequired ? '执行目标（关联 Runbook 必填）' : '执行目标'">
           <a-select
-            v-model="formData.related_resource_id"
-            placeholder="输入名称搜索资源"
+            v-model="formData.target_resource_ids"
+            placeholder="输入名称/实例 ID 搜索资源，可多选"
             allow-clear
             allow-search
+            multiple
             :filter-option="false"
-            :loading="relOptSearching"
-            @search="searchRelatedResources"
+            :loading="targetSearching"
+            @search="searchTargetResources"
           >
-            <a-option v-for="r in relatedResourceOptions" :key="r.id" :value="r.id">
-              {{ r.name }}（{{ r.model_code || '未知模型' }}）
+            <a-option v-for="r in targetResourceOptions" :key="r.id" :value="r.id">
+              {{ r.name }}（{{ r.model_code || '-' }} / {{ r.region || '-' }}）
             </a-option>
           </a-select>
         </a-form-item>
@@ -152,6 +166,7 @@
               <span class="ctx-name">{{ r.name || `#${r.resource_id}` }}</span>
               <a-tag v-if="r.env" size="small">{{ r.env }}</a-tag>
               <a-tag v-if="r.busy_execution_id" size="small" color="orange">任务占用 #{{ r.busy_execution_id }}</a-tag>
+              <a-tag v-for="t in r.active_tickets" :key="t.id" size="small" color="gold">活跃工单 {{ t.ticket_no }}</a-tag>
               <a-tag v-for="f in r.active_freezes" :key="f.id" size="small" color="red">封禁：{{ f.name }}</a-tag>
               <span v-if="r.recent_changes.length" class="ctx-text">近期变更 {{ r.recent_changes.length }} 条</span>
             </div>
@@ -183,10 +198,13 @@
           </a-descriptions-item>
           <a-descriptions-item label="创建人">{{ detail.creator_name || `#${detail.creator_id}` }}</a-descriptions-item>
           <a-descriptions-item label="处理人">{{ detail.assignee_name || '未指派' }}</a-descriptions-item>
-          <a-descriptions-item label="关联资源">
-            <a-link v-if="detail.related_resource_id" @click="$router.push({ name: 'ResourceDetail', params: { id: String(detail.related_resource_id) } })">
-              #{{ detail.related_resource_id }}
-            </a-link>
+          <a-descriptions-item label="执行目标" :span="2">
+            <a-space v-if="detail.target_resource_ids.length" wrap>
+              <a-link v-for="rid in detail.target_resource_ids" :key="rid" @click="$router.push({ name: 'ResourceDetail', params: { id: String(rid) } })">
+                {{ targetResourceNames.get(rid) || `#${rid}` }}
+              </a-link>
+            </a-space>
+            <span v-else-if="detail.related_resource_id">#{{ detail.related_resource_id }}</span>
             <span v-else>-</span>
           </a-descriptions-item>
           <a-descriptions-item label="服务目录">
@@ -356,7 +374,7 @@ import type { ICatalogItem, ITicketGroup } from '../../api/ticketMeta'
 import * as jobApi from '../../api/job'
 import { executionStatus } from '../../api/job'
 import type { IRunbook } from '../../api/job'
-import { getResourceOptions } from '../../api/cmdb'
+import { getResourceOptions, getResourceDetail } from '../../api/cmdb'
 import type { IResourceOption } from '../../api/cmdb'
 import { getUserList } from '../../api/user'
 import type { IUser } from '../../types/user'
@@ -404,7 +422,7 @@ function formatTime(t: string | null) {
 // ========== 列表 ==========
 const loading = ref(false)
 const tickets = ref<ITicket[]>([])
-const filters = reactive({ keyword: '', status: undefined as string | undefined, ticket_type: undefined as string | undefined, priority: undefined as string | undefined, group_id: undefined as number | undefined, catalog_item_id: undefined as number | undefined })
+const filters = reactive({ keyword: '', status: undefined as string | undefined, ticket_type: undefined as string | undefined, priority: undefined as string | undefined, group_id: undefined as number | undefined, catalog_item_id: undefined as number | undefined, target_resource_id: undefined as number | undefined })
 const pagination = reactive({ current: 1, pageSize: 20, total: 0, showTotal: true, showPageSize: true })
 
 const columns = [
@@ -430,6 +448,7 @@ async function fetchData() {
       priority: filters.priority,
       group_id: filters.group_id,
       catalog_item_id: filters.catalog_item_id,
+      target_resource_id: filters.target_resource_id,
       page: pagination.current,
       page_size: pagination.pageSize,
     })
@@ -475,26 +494,42 @@ async function fetchMetaOptions() {
   try { catalogItems.value = (await metaApi.getCatalog()).data } catch { /* ignore */ }
 }
 
-// 关联资源选择器（轻量搜索接口）
-const relatedResourceOptions = ref<IResourceOption[]>([])
-const relOptSearching = ref(false)
+// 执行目标选择器（轻量搜索接口，多选）
+const targetResourceOptions = ref<IResourceOption[]>([])
+const targetSearching = ref(false)
 
-async function searchRelatedResources(keyword: string) {
-  relOptSearching.value = true
+async function searchTargetResources(keyword: string) {
+  targetSearching.value = true
   try {
     const res = await getResourceOptions({ keyword: keyword || undefined, limit: 20 })
     // 保留已选项避免回显丢失
     const merged = [...res.data]
-    for (const r of relatedResourceOptions.value) {
-      if (formData.related_resource_id === r.id && !merged.some(m => m.id === r.id)) merged.push(r)
+    for (const r of targetResourceOptions.value) {
+      if (formData.target_resource_ids.includes(r.id) && !merged.some(m => m.id === r.id)) merged.push(r)
     }
-    relatedResourceOptions.value = merged
-  } catch { /* ignore */ } finally { relOptSearching.value = false }
+    targetResourceOptions.value = merged
+  } catch { /* ignore */ } finally { targetSearching.value = false }
+}
+
+// 筛选栏目标资源过滤选择器
+const filterResourceOptions = ref<IResourceOption[]>([])
+const filterResSearching = ref(false)
+
+async function searchFilterResources(keyword: string) {
+  filterResSearching.value = true
+  try {
+    const res = await getResourceOptions({ keyword: keyword || undefined, limit: 20 })
+    const merged = [...res.data]
+    for (const r of filterResourceOptions.value) {
+      if (filters.target_resource_id === r.id && !merged.some(m => m.id === r.id)) merged.push(r)
+    }
+    filterResourceOptions.value = merged
+  } catch { /* ignore */ } finally { filterResSearching.value = false }
 }
 
 const formData = reactive({
   title: '', ticket_type: 'general', priority: 'medium',
-  assignee_id: undefined as number | undefined, related_resource_id: undefined as number | undefined,
+  assignee_id: undefined as number | undefined, target_resource_ids: [] as number[],
   catalog_item_id: undefined as number | undefined, group_id: undefined as number | undefined,
   runbook_id: undefined as number | undefined, code_ref: '', jobParamsText: '',
   description: '',
@@ -508,30 +543,44 @@ watch(() => formData.catalog_item_id, (cid) => {
   formData.ticket_type = item.default_type
   if (item.default_runbook_id && !formData.runbook_id) formData.runbook_id = item.default_runbook_id
 })
-const formRules = { title: [{ required: true, message: '请输入标题' }] }
+const formRules = computed(() => ({
+  title: [{ required: true, message: '请输入标题' }],
+  target_resource_ids: targetRequired.value
+    ? [{ required: true, message: '工单关联了 Runbook，必须选择执行目标' }]
+    : [],
+}))
+
+// 条件必填：目录事项绑 runbook / 变更工单手动关联 runbook（与后端 _validate_runbook_intent 同规则）
+const targetRequired = computed(() => {
+  if (formData.catalog_item_id) {
+    const item = catalogItems.value.find(i => i.id === formData.catalog_item_id)
+    if (item?.default_runbook_id) return true
+  }
+  return formData.ticket_type === 'change' && !!formData.runbook_id
+})
 
 async function fetchRunbookOptions() {
   try { const res = await jobApi.getRunbooks({ page: 1, page_size: 100 }); runbookOptions.value = res.data.items } catch { /* ignore */ }
 }
 
-// 变更工单选择关联资源后拉取变更上下文（封禁/占用/近期变更）
-watch(() => formData.related_resource_id, async (rid) => {
+// 变更工单选定执行目标后拉取变更上下文（封禁/占用/活跃工单/近期变更）
+watch(() => formData.target_resource_ids.join(','), async (key) => {
   changeContext.value = []
-  if (!rid || formData.ticket_type !== 'change') return
-  try { changeContext.value = (await ticketApi.getChangeContext([rid])).data } catch { /* ignore */ }
+  if (!key || formData.ticket_type !== 'change') return
+  try { changeContext.value = (await ticketApi.getChangeContext([...formData.target_resource_ids])).data } catch { /* ignore */ }
 })
 
 function handleAdd() {
   editingId.value = null
   Object.assign(formData, {
-    title: '', ticket_type: 'general', priority: 'medium', assignee_id: undefined, related_resource_id: undefined,
+    title: '', ticket_type: 'general', priority: 'medium', assignee_id: undefined, target_resource_ids: [],
     catalog_item_id: undefined, group_id: undefined,
     runbook_id: undefined, code_ref: '', jobParamsText: '', description: '',
   })
   changeContext.value = []
   fetchRunbookOptions()
   fetchMetaOptions()
-  searchRelatedResources('')
+  searchTargetResources('')
   formVisible.value = true
 }
 
@@ -540,7 +589,7 @@ function handleEdit() {
   editingId.value = detail.value.id
   Object.assign(formData, {
     title: detail.value.title, ticket_type: detail.value.ticket_type, priority: detail.value.priority,
-    assignee_id: detail.value.assignee_id ?? undefined, related_resource_id: undefined,
+    assignee_id: detail.value.assignee_id ?? undefined, target_resource_ids: [],
     description: detail.value.description || '',
   })
   formVisible.value = true
@@ -562,7 +611,7 @@ async function handleSubmit() {
       }
       await ticketApi.createTicket({
         title: formData.title, ticket_type: formData.ticket_type, priority: formData.priority,
-        assignee_id: formData.assignee_id ?? null, related_resource_id: formData.related_resource_id ?? null,
+        assignee_id: formData.assignee_id ?? null, target_resource_ids: formData.target_resource_ids,
         catalog_item_id: formData.catalog_item_id ?? null, group_id: formData.group_id ?? null,
         runbook_id: formData.ticket_type === 'change' ? (formData.runbook_id ?? null) : null,
         code_ref: formData.ticket_type === 'change' ? (formData.code_ref || null) : null,
@@ -583,7 +632,25 @@ const detail = ref<ITicketDetail | null>(null)
 
 async function openDetail(id: number) {
   detailVisible.value = true
-  try { detail.value = (await ticketApi.getTicket(id)).data } catch { Message.error('获取工单详情失败'); detailVisible.value = false }
+  try {
+    detail.value = (await ticketApi.getTicket(id)).data
+    resolveTargetNames(detail.value.target_resource_ids || [])
+  } catch { Message.error('获取工单详情失败'); detailVisible.value = false }
+}
+
+// 执行目标名称回显：按 id 批量取 name
+const targetResourceNames = ref<Map<number, string>>(new Map())
+
+async function resolveTargetNames(ids: number[]) {
+  targetResourceNames.value = new Map()
+  if (!ids.length) return
+  const entries = await Promise.all(ids.map(async (id): Promise<[number, string]> => {
+    try {
+      const r = await getResourceDetail(id)
+      return [id, r.data.name]
+    } catch { return [id, `#${id}`] }
+  }))
+  targetResourceNames.value = new Map(entries)
 }
 
 const isTerminal = computed(() => detail.value ? ['closed', 'cancelled'].includes(detail.value.status) : true)

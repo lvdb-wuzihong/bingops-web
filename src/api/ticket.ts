@@ -15,7 +15,10 @@ export interface ITicket {
   creator_name: string | null
   assignee_id: number | null
   assignee_name: string | null
+  // 已废弃：兼容保留，存量数据已回填进 target_resource_ids
   related_resource_id: number | null
+  // 执行目标资源 ID 列表（多选唯一入口）
+  target_resource_ids: number[]
   runbook_id: number | null
   job_params: Record<string, unknown>
   code_ref: string | null
@@ -98,6 +101,8 @@ export interface IChangeContextResource {
   env: string | null
   recent_changes: Record<string, unknown>[]
   busy_execution_id: number | null
+  // 影响该资源的活跃工单（pending_approval/open/in_progress）
+  active_tickets: { id: number; ticket_no: string; status: string; title: string }[]
   active_freezes: { id: number; name: string; reason: string | null; starts_at: string; ends_at: string }[]
 }
 
@@ -109,6 +114,8 @@ export interface ITicketQuery extends IPageParams {
   assignee_id?: number
   group_id?: number
   catalog_item_id?: number
+  // JSONB @> 包含语义过滤
+  target_resource_id?: number
   keyword?: string
 }
 
@@ -118,7 +125,9 @@ export interface ITicketCreate {
   ticket_type?: string
   priority?: string
   assignee_id?: number | null
+  // 已废弃：改用 target_resource_ids
   related_resource_id?: number | null
+  target_resource_ids?: number[]
   catalog_item_id?: number | null
   group_id?: number | null
   runbook_id?: number | null
