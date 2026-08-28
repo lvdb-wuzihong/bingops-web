@@ -125,8 +125,8 @@
           <a-row :gutter="16">
             <a-col :span="12">
               <a-form-item field="catalog_item_id" label="服务目录事项">
-                <a-select v-model="formData.catalog_item_id" placeholder="可选，选择后快照难度/默认类型" allow-clear show-search>
-                  <a-option v-for="c in catalogLeafOptions" :key="c.id" :value="c.id">{{ c.label }}</a-option>
+                <a-select v-model="formData.catalog_item_id" placeholder="按当前类型过滤，选择后快照难度/默认 Runbook" allow-clear show-search>
+                  <a-option v-for="c in formCatalogOptions" :key="c.id" :value="c.id">{{ c.label }}</a-option>
                 </a-select>
               </a-form-item>
             </a-col>
@@ -542,6 +542,21 @@ watch(() => formData.catalog_item_id, (cid) => {
   if (!item) return
   formData.ticket_type = item.default_type
   if (item.default_runbook_id && !formData.runbook_id) formData.runbook_id = item.default_runbook_id
+})
+
+// 表单目录选项：仅默认类型与当前工单类型匹配的事项，避免跨类型误选
+const formCatalogOptions = computed(() => {
+  const cats = new Map(catalogItems.value.filter(i => i.parent_id === null).map(i => [i.id, i.name]))
+  return catalogItems.value
+    .filter(i => i.parent_id !== null && i.is_active && i.default_type === formData.ticket_type)
+    .map(i => ({ id: i.id, label: `${cats.get(i.parent_id as number) || ''} / ${i.name}` }))
+})
+
+// 切换类型时清空已选的不匹配事项
+watch(() => formData.ticket_type, (t) => {
+  if (!formData.catalog_item_id) return
+  const item = catalogItems.value.find(i => i.id === formData.catalog_item_id)
+  if (item && item.default_type !== t) formData.catalog_item_id = undefined
 })
 const formRules = computed(() => ({
   title: [{ required: true, message: '请输入标题' }],

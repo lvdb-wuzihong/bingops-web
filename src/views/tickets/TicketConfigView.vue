@@ -5,7 +5,7 @@
         <!-- ========== 服务目录 ========== -->
         <a-tab-pane key="catalog" title="服务目录">
           <div class="tab-toolbar">
-            <a-button type="primary" size="small" @click="openCatalogModal(null)">
+            <a-button type="primary" size="small" @click="openCatalogCreate('category')">
               <template #icon><icon-plus /></template>新增分类
             </a-button>
             <a-button size="small" @click="fetchCatalog">
@@ -17,7 +17,7 @@
               <div class="catalog-cat">
                 <span class="catalog-cat-name">{{ cat.name }}</span>
                 <a-space size="mini">
-                  <a-button type="text" size="mini" @click="openCatalogModal(cat.id)">新增事项</a-button>
+                  <a-button type="text" size="mini" @click="openCatalogCreate('item', cat.id)">新增事项</a-button>
                   <a-button type="text" size="mini" @click="openCatalogEdit(cat)">编辑</a-button>
                   <a-popconfirm content="确定删除该分类？有子项或被引用时拒绝" @ok="handleDeleteCatalog(cat.id)">
                     <a-button type="text" size="mini" status="danger">删除</a-button>
@@ -125,54 +125,56 @@
       </a-tabs>
     </a-card>
 
-    <!-- 目录项弹窗 -->
-    <a-modal v-model:visible="catalogModalVisible" :title="catalogForm.id ? '编辑目录项' : '新增目录项'" :width="560" :ok-loading="catalogSaving" @ok="handleSaveCatalog">
+    <!-- 目录弹窗：分类/事项双模式 -->
+    <a-modal v-model:visible="catalogModalVisible" :title="catalogModalTitle" :width="560" :ok-loading="catalogSaving" @ok="handleSaveCatalog">
       <a-form :model="catalogForm" layout="vertical">
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item label="名称"><a-input v-model="catalogForm.name" placeholder="如：ECS 重启 / 数据库扩容" :disabled="!!catalogForm.id" /></a-form-item>
+            <a-form-item label="名称">
+              <a-input v-model="catalogForm.name" :placeholder="catalogMode === 'category' ? '如：云账号与权限' : '如：ECS 重启 / 数据库扩容'" :disabled="!!catalogForm.id" />
+            </a-form-item>
           </a-col>
-          <a-col :span="12">
-            <a-form-item label="上级分类（空=一级分类）">
-              <a-select v-model="catalogForm.parent_id" placeholder="一级分类" allow-clear :disabled="!!catalogForm.id">
+          <a-col :span="12" v-if="catalogMode === 'item'">
+            <a-form-item label="上级分类">
+              <a-select :model-value="catalogForm.parent_id" disabled>
                 <a-option v-for="c in catalogCategories" :key="c.id" :value="c.id">{{ c.name }}</a-option>
               </a-select>
             </a-form-item>
           </a-col>
         </a-row>
+        <template v-if="catalogMode === 'item'">
+          <a-row :gutter="16">
+            <a-col :span="8">
+              <a-form-item label="难度">
+                <a-select v-model="catalogForm.difficulty">
+                  <a-option v-for="(m, k) in DIFFICULTY_MAP" :key="k" :value="k">{{ m.text }}</a-option>
+                </a-select>
+              </a-form-item>
+            </a-col>
+            <a-col :span="8">
+              <a-form-item label="默认风险">
+                <a-select v-model="catalogForm.default_risk">
+                  <a-option value="low">低</a-option>
+                  <a-option value="medium">中</a-option>
+                  <a-option value="high">高</a-option>
+                </a-select>
+              </a-form-item>
+            </a-col>
+            <a-col :span="8">
+              <a-form-item label="默认类型">
+                <a-select v-model="catalogForm.default_type">
+                  <a-option v-for="(t, k) in typeMap" :key="k" :value="k">{{ t }}</a-option>
+                </a-select>
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <a-form-item label="默认 Runbook">
+            <a-select v-model="catalogForm.default_runbook_id" placeholder="可选" allow-clear>
+              <a-option v-for="rb in runbookOptions" :key="rb.id" :value="rb.id">{{ rb.name }}</a-option>
+            </a-select>
+          </a-form-item>
+        </template>
         <a-row :gutter="16">
-          <a-col :span="8">
-            <a-form-item label="难度">
-              <a-select v-model="catalogForm.difficulty">
-                <a-option v-for="(m, k) in DIFFICULTY_MAP" :key="k" :value="k">{{ m.text }}</a-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="默认风险">
-              <a-select v-model="catalogForm.default_risk">
-                <a-option value="low">低</a-option>
-                <a-option value="medium">中</a-option>
-                <a-option value="high">高</a-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="默认类型">
-              <a-select v-model="catalogForm.default_type">
-                <a-option v-for="(t, k) in typeMap" :key="k" :value="k">{{ t }}</a-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="默认 Runbook">
-              <a-select v-model="catalogForm.default_runbook_id" placeholder="可选" allow-clear>
-                <a-option v-for="rb in runbookOptions" :key="rb.id" :value="rb.id">{{ rb.name }}</a-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
           <a-col :span="12">
             <a-form-item label="排序"><a-input-number v-model="catalogForm.sort_order" :min="0" style="width: 100%" /></a-form-item>
           </a-col>
@@ -293,21 +295,29 @@ async function fetchCatalog() {
 
 const catalogModalVisible = ref(false)
 const catalogSaving = ref(false)
+// category=一级分类（仅名称/描述/排序） item=二级事项（父分类固定 + 事项级属性）
+const catalogMode = ref<'category' | 'item'>('category')
+const catalogModalTitle = computed(() => {
+  if (catalogForm.id) return catalogMode.value === 'category' ? '编辑分类' : '编辑事项'
+  return catalogMode.value === 'category' ? '新增分类' : '新增事项'
+})
 const catalogForm = reactive({
   id: null as number | null, name: '', parent_id: undefined as number | undefined,
   difficulty: 'simple', default_risk: 'low', default_type: 'request',
   default_runbook_id: undefined as number | undefined, sort_order: 0, description: '',
 })
 
-function openCatalogModal(parentId: number | null) {
+function openCatalogCreate(mode: 'category' | 'item', parentId?: number) {
+  catalogMode.value = mode
   Object.assign(catalogForm, {
-    id: null, name: '', parent_id: parentId ?? undefined, difficulty: 'simple', default_risk: 'low',
+    id: null, name: '', parent_id: parentId, difficulty: 'simple', default_risk: 'low',
     default_type: 'request', default_runbook_id: undefined, sort_order: 0, description: '',
   })
   catalogModalVisible.value = true
 }
 
 function openCatalogEdit(item: ICatalogItem) {
+  catalogMode.value = item.parent_id === null ? 'category' : 'item'
   Object.assign(catalogForm, {
     id: item.id, name: item.name, parent_id: item.parent_id ?? undefined, difficulty: item.difficulty,
     default_risk: item.default_risk, default_type: item.default_type,
@@ -318,17 +328,28 @@ function openCatalogEdit(item: ICatalogItem) {
 
 async function handleSaveCatalog() {
   if (!catalogForm.name) { Message.warning('请输入名称'); return }
+  if (catalogMode.value === 'item' && !catalogForm.parent_id) { Message.warning('事项必须归属一个分类'); return }
   catalogSaving.value = true
   try {
     if (catalogForm.id) {
+      // 分类更新时后端自动屏蔽事项级属性，前端同样不发送
       await metaApi.updateCatalogItem(catalogForm.id, {
-        description: catalogForm.description || null, difficulty: catalogForm.difficulty,
-        default_risk: catalogForm.default_risk, default_type: catalogForm.default_type,
-        default_runbook_id: catalogForm.default_runbook_id ?? null, sort_order: catalogForm.sort_order,
+        description: catalogForm.description || null,
+        ...(catalogMode.value === 'item' ? {
+          difficulty: catalogForm.difficulty,
+          default_risk: catalogForm.default_risk,
+          default_type: catalogForm.default_type,
+          default_runbook_id: catalogForm.default_runbook_id ?? null,
+        } : {}),
+        sort_order: catalogForm.sort_order,
+      })
+    } else if (catalogMode.value === 'category') {
+      await metaApi.createCatalogCategory({
+        name: catalogForm.name, description: catalogForm.description || null, sort_order: catalogForm.sort_order,
       })
     } else {
       await metaApi.createCatalogItem({
-        name: catalogForm.name, parent_id: catalogForm.parent_id ?? null,
+        name: catalogForm.name, parent_id: catalogForm.parent_id as number,
         description: catalogForm.description || null, difficulty: catalogForm.difficulty,
         default_risk: catalogForm.default_risk, default_type: catalogForm.default_type,
         default_runbook_id: catalogForm.default_runbook_id ?? null, sort_order: catalogForm.sort_order,

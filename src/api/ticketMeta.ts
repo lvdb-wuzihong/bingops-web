@@ -19,9 +19,17 @@ export interface ICatalogItem {
   updated_at: string
 }
 
-export interface ICatalogCreate {
+// 一级分类创建（语义端点 /categories，不含事项级属性）
+export interface ICategoryCreate {
   name: string
-  parent_id?: number | null
+  description?: string | null
+  sort_order?: number
+}
+
+// 二级事项创建（语义端点 /items，parent_id 必填）
+export interface IItemCreate {
+  name: string
+  parent_id: number
   description?: string | null
   difficulty?: string
   default_risk?: string
@@ -44,8 +52,12 @@ export function getCatalog(params?: { parent_id?: number; include_inactive?: boo
   return request.get<ICatalogItem[]>('/api/v1/ticket-catalog', { params })
 }
 
-export function createCatalogItem(data: ICatalogCreate) {
-  return request.post<ICatalogItem>('/api/v1/ticket-catalog', data)
+export function createCatalogCategory(data: ICategoryCreate) {
+  return request.post<ICatalogItem>('/api/v1/ticket-catalog/categories', data)
+}
+
+export function createCatalogItem(data: IItemCreate) {
+  return request.post<ICatalogItem>('/api/v1/ticket-catalog/items', data)
 }
 
 export function updateCatalogItem(id: number, data: ICatalogUpdate) {

@@ -10,6 +10,9 @@ export interface IBusinessApp {
   department: string | null
   description: string | null
   labels: Record<string, string> | null
+  repo_url: string | null
+  // 各环境流水线地址 {env: url}，key 对齐 env 标签值域
+  pipelines: Record<string, string>
   created_at: string
   updated_at: string
 }
@@ -22,6 +25,8 @@ export interface IBusinessAppCreate {
   department?: string
   description?: string
   labels?: Record<string, string>
+  repo_url?: string | null
+  pipelines?: Record<string, string>
 }
 
 export interface IBusinessAppUpdate {
@@ -31,6 +36,8 @@ export interface IBusinessAppUpdate {
   department?: string
   description?: string
   labels?: Record<string, string>
+  repo_url?: string | null
+  pipelines?: Record<string, string>
 }
 
 export interface IBusinessAppQuery extends IPageParams {
