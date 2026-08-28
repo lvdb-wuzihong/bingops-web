@@ -13,6 +13,8 @@ export interface ICatalogItem {
   default_risk: string
   default_type: string
   default_runbook_id: number | null
+  // 默认处理组（路由配置化）
+  default_group_id: number | null
   is_active: boolean
   sort_order: number
   created_at: string
@@ -24,6 +26,7 @@ export interface ICategoryCreate {
   name: string
   description?: string | null
   sort_order?: number
+  default_group_id?: number | null
 }
 
 // 二级事项创建（语义端点 /items，parent_id 必填）
@@ -36,6 +39,8 @@ export interface IItemCreate {
   default_type?: string
   default_runbook_id?: number | null
   sort_order?: number
+  // 覆盖分类的默认处理组
+  default_group_id?: number | null
 }
 
 export interface ICatalogUpdate {
@@ -44,6 +49,7 @@ export interface ICatalogUpdate {
   default_risk?: string | null
   default_type?: string | null
   default_runbook_id?: number | null
+  default_group_id?: number | null
   is_active?: boolean | null
   sort_order?: number | null
 }

@@ -564,6 +564,10 @@ watch(() => formData.catalog_item_id, (cid) => {
   if (!item) return
   formData.ticket_type = item.default_type
   if (item.default_runbook_id && !formData.runbook_id) formData.runbook_id = item.default_runbook_id
+  // 路由配置化：目录默认处理组预填（事项级覆盖分类级），联动处理人候选
+  const derivedGroupId = item.default_group_id
+    ?? (item.parent_id !== null ? catalogItems.value.find(i => i.id === item.parent_id)?.default_group_id ?? null : null)
+  if (derivedGroupId && !formData.group_id) formData.group_id = derivedGroupId
 })
 
 // 表单目录选项：仅默认类型与当前工单类型匹配的事项，避免跨类型误选

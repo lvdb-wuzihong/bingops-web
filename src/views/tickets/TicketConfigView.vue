@@ -16,6 +16,7 @@
             <div v-for="cat in catalogCategories" :key="cat.id" class="catalog-group">
               <div class="catalog-cat">
                 <span class="catalog-cat-name">{{ cat.name }}</span>
+                <a-tag v-if="cat.default_group_id" size="small">默认处理组：{{ groupName(cat.default_group_id) }}</a-tag>
                 <a-space size="mini">
                   <a-button type="text" size="mini" @click="openCatalogCreate('item', cat.id)">新增事项</a-button>
                   <a-button type="text" size="mini" @click="openCatalogEdit(cat)">编辑</a-button>
@@ -29,6 +30,10 @@
                   <a-tag size="small" :color="DIFFICULTY_MAP[record.difficulty]?.color || 'gray'">{{ DIFFICULTY_MAP[record.difficulty]?.text || record.difficulty }}</a-tag>
                 </template>
                 <template #default_type="{ record }">{{ typeMap[record.default_type] || record.default_type }}</template>
+                <template #default_group="{ record }">
+                  <span v-if="record.default_group_id">{{ groupName(record.default_group_id) }}</span>
+                  <span v-else class="inherit-text">继承分类</span>
+                </template>
                 <template #is_active="{ record }">
                   <a-switch :model-value="record.is_active" size="small" @change="(v: string | number | boolean) => handleToggleCatalog(record, Boolean(v))" />
                 </template>
@@ -176,6 +181,13 @@
         </template>
         <a-row :gutter="16">
           <a-col :span="12">
+            <a-form-item label="默认处理组">
+              <a-select v-model="catalogForm.default_group_id" :placeholder="catalogMode === 'item' ? '可选，留空继承分类' : '可选，应用于整个分类'" allow-clear>
+                <a-option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</a-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
             <a-form-item label="排序"><a-input-number v-model="catalogForm.sort_order" :min="0" style="width: 100%" /></a-form-item>
           </a-col>
         </a-row>
@@ -284,6 +296,7 @@ const catalogColumns = [
   { title: '事项', dataIndex: 'name', width: 180, ellipsis: true },
   { title: '难度', slotName: 'difficulty', width: 80 },
   { title: '默认类型', slotName: 'default_type', width: 90 },
+  { title: '默认处理组', slotName: 'default_group', width: 120 },
   { title: '启用', slotName: 'is_active', width: 70 },
   { title: '操作', slotName: 'actions', width: 120 },
 ]
@@ -304,14 +317,20 @@ const catalogModalTitle = computed(() => {
 const catalogForm = reactive({
   id: null as number | null, name: '', parent_id: undefined as number | undefined,
   difficulty: 'simple', default_risk: 'low', default_type: 'request',
-  default_runbook_id: undefined as number | undefined, sort_order: 0, description: '',
+  default_runbook_id: undefined as number | undefined, default_group_id: undefined as number | undefined,
+  sort_order: 0, description: '',
 })
+
+function groupName(id: number | null) {
+  if (!id) return '-'
+  return groups.value.find(g => g.id === id)?.name || `#${id}`
+}
 
 function openCatalogCreate(mode: 'category' | 'item', parentId?: number) {
   catalogMode.value = mode
   Object.assign(catalogForm, {
     id: null, name: '', parent_id: parentId, difficulty: 'simple', default_risk: 'low',
-    default_type: 'request', default_runbook_id: undefined, sort_order: 0, description: '',
+    default_type: 'request', default_runbook_id: undefined, default_group_id: undefined, sort_order: 0, description: '',
   })
   catalogModalVisible.value = true
 }
@@ -321,7 +340,8 @@ function openCatalogEdit(item: ICatalogItem) {
   Object.assign(catalogForm, {
     id: item.id, name: item.name, parent_id: item.parent_id ?? undefined, difficulty: item.difficulty,
     default_risk: item.default_risk, default_type: item.default_type,
-    default_runbook_id: item.default_runbook_id ?? undefined, sort_order: item.sort_order, description: item.description || '',
+    default_runbook_id: item.default_runbook_id ?? undefined, default_group_id: item.default_group_id ?? undefined,
+    sort_order: item.sort_order, description: item.description || '',
   })
   catalogModalVisible.value = true
 }
@@ -341,18 +361,21 @@ async function handleSaveCatalog() {
           default_type: catalogForm.default_type,
           default_runbook_id: catalogForm.default_runbook_id ?? null,
         } : {}),
+        default_group_id: catalogForm.default_group_id ?? null,
         sort_order: catalogForm.sort_order,
       })
     } else if (catalogMode.value === 'category') {
       await metaApi.createCatalogCategory({
-        name: catalogForm.name, description: catalogForm.description || null, sort_order: catalogForm.sort_order,
+        name: catalogForm.name, description: catalogForm.description || null,
+        sort_order: catalogForm.sort_order, default_group_id: catalogForm.default_group_id ?? null,
       })
     } else {
       await metaApi.createCatalogItem({
         name: catalogForm.name, parent_id: catalogForm.parent_id as number,
         description: catalogForm.description || null, difficulty: catalogForm.difficulty,
         default_risk: catalogForm.default_risk, default_type: catalogForm.default_type,
-        default_runbook_id: catalogForm.default_runbook_id ?? null, sort_order: catalogForm.sort_order,
+        default_runbook_id: catalogForm.default_runbook_id ?? null,
+        default_group_id: catalogForm.default_group_id ?? null, sort_order: catalogForm.sort_order,
       })
     }
     Message.success('保存成功')
@@ -500,6 +523,7 @@ onMounted(() => {
 .tab-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: $spacing-md; gap: $spacing-sm; }
 
 .catalog-group { margin-bottom: $spacing-lg; }
+.inherit-text { color: $text-disabled; font-size: $font-size-sm; }
 .catalog-cat {
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: $spacing-xs; padding: $spacing-xs $spacing-sm;
