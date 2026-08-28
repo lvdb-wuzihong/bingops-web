@@ -83,24 +83,17 @@
           <a-input v-model="formData.title" placeholder="简要描述问题或需求" />
         </a-form-item>
         <a-row :gutter="16">
-          <a-col :span="8">
+          <a-col :span="12">
             <a-form-item field="ticket_type" label="类型">
               <a-select v-model="formData.ticket_type" :disabled="!!editingId">
                 <a-option v-for="(t, k) in typeMap" :key="k" :value="k">{{ t }}</a-option>
               </a-select>
             </a-form-item>
           </a-col>
-          <a-col :span="8">
+          <a-col :span="12">
             <a-form-item field="priority" label="优先级">
               <a-select v-model="formData.priority">
                 <a-option v-for="(m, k) in priorityMap" :key="k" :value="k">{{ m.text }}</a-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item field="assignee_id" label="处理人">
-              <a-select v-model="formData.assignee_id" placeholder="可选" allow-clear allow-search>
-                <a-option v-for="o in assigneeOptions" :key="o.id" :value="o.id">{{ o.label }}</a-option>
               </a-select>
             </a-form-item>
           </a-col>
@@ -122,24 +115,12 @@
           </a-select>
         </a-form-item>
         <template v-if="!editingId">
-          <a-row :gutter="16">
-            <a-col :span="12">
-              <a-form-item field="catalog_item_id" label="服务目录事项">
-                <a-select v-model="formData.catalog_item_id" placeholder="按当前类型过滤，选择后快照难度/默认 Runbook" allow-clear show-search>
-                  <a-option v-for="c in formCatalogOptions" :key="c.id" :value="c.id">{{ c.label }}</a-option>
-                </a-select>
-              </a-form-item>
-            </a-col>
-            <a-col :span="12">
-              <a-form-item field="group_id" label="处理组">
-                <a-select v-model="formData.group_id" placeholder="可选" allow-clear>
-                  <a-option v-for="g in groupOptions" :key="g.id" :value="g.id">{{ g.name }}</a-option>
-                </a-select>
-              </a-form-item>
-            </a-col>
-          </a-row>
-          <p v-if="formData.group_id && !formData.assignee_id" class="form-hint">未指派处理人时，将按该组当日值班 tier1 自动轮转派单</p>
-          <p v-if="formData.group_id && assigneeCandidates" class="form-hint">处理人候选已联动：组成员 + 当日值班（{{ assigneeCandidates.length }} 人）</p>
+          <a-form-item field="catalog_item_id" label="服务目录事项">
+            <a-select v-model="formData.catalog_item_id" placeholder="按当前类型过滤，选择后快照难度/默认 Runbook" allow-clear show-search>
+              <a-option v-for="c in formCatalogOptions" :key="c.id" :value="c.id">{{ c.label }}</a-option>
+            </a-select>
+          </a-form-item>
+          <p class="form-hint">处理组按目录默认配置自动派生（事项优先于分类）；处理人按当日值班 tier1 → 组成员轮转自动分派，创建后可在详情人工改派</p>
         </template>
 
         <!-- 变更工单：runbook 关联 + 变更上下文检查 -->
@@ -303,10 +284,11 @@
       </div>
     </a-drawer>
 
-    <!-- 指派弹窗 -->
+    <!-- 指派/转派弹窗（人工改派场景，候选 = 组成员 ∪ 当日值班） -->
     <a-modal v-model:visible="assignVisible" title="指派处理人" :width="420" :ok-loading="assignLoading" @ok="handleAssign">
-      <a-select v-model="assigneeId" placeholder="请选择处理人" allow-clear show-search :filter-option="filterUserOption" style="width: 100%">
-        <a-option v-for="u in users" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</a-option>
+      <p v-if="assignCandidates" class="form-hint">候选人 = 该组成员 + 当日值班（{{ assignCandidates.length }} 人）</p>
+      <a-select v-model="assigneeId" placeholder="请选择处理人" allow-clear allow-search style="width: 100%">
+        <a-option v-for="o in assignOptions" :key="o.id" :value="o.id">{{ o.label }}</a-option>
       </a-select>
     </a-modal>
 
@@ -462,16 +444,10 @@ function handleSearch() { pagination.current = 1; fetchData() }
 function onPageChange(page: number) { pagination.current = page; fetchData() }
 function onPageSizeChange(size: number) { pagination.pageSize = size; pagination.current = 1; fetchData() }
 
-// ========== 用户（处理人候选） ==========
+// ========== 用户（改派候选回退用） ==========
 const users = ref<IUser[]>([])
 async function fetchUsers() {
   try { const res = await getUserList({ page: 1, page_size: 100 }); users.value = res.data.items } catch { /* ignore */ }
-}
-function filterUserOption(input: string, option: { label?: string; value?: unknown }) {
-  const u = users.value.find(x => x.id === option.value)
-  if (!u) return false
-  const label = `${u.display_name || ''} ${u.username}`.toLowerCase()
-  return label.includes(input.toLowerCase())
 }
 
 // ========== 新建/编辑 ==========
@@ -530,44 +506,19 @@ async function searchFilterResources(keyword: string) {
 
 const formData = reactive({
   title: '', ticket_type: 'general', priority: 'medium',
-  assignee_id: undefined as number | undefined, target_resource_ids: [] as number[],
-  catalog_item_id: undefined as number | undefined, group_id: undefined as number | undefined,
+  target_resource_ids: [] as number[],
+  catalog_item_id: undefined as number | undefined,
   runbook_id: undefined as number | undefined, code_ref: '', jobParamsText: '',
   description: '',
 })
 
-// 处理组→处理人联动：选定处理组后候选人 = 组成员 ∪ 当日值班三线
-const assigneeCandidates = ref<IAssigneeCandidate[] | null>(null)
-
-watch(() => formData.group_id, async (gid) => {
-  assigneeCandidates.value = null
-  if (!gid) return
-  try { assigneeCandidates.value = (await metaApi.getGroupCandidates(gid)).data } catch { /* ignore */ }
-})
-
-const assigneeOptions = computed(() => {
-  const base = assigneeCandidates.value
-    ? assigneeCandidates.value.map(c => ({ id: c.id, label: c.display_name || c.username }))
-    : users.value.map(u => ({ id: u.id, label: u.display_name || u.username }))
-  // 已选处理人不在候选中时保留回显
-  if (formData.assignee_id && !base.some(o => o.id === formData.assignee_id)) {
-    const u = users.value.find(x => x.id === formData.assignee_id)
-    if (u) base.push({ id: u.id, label: u.display_name || u.username })
-  }
-  return base
-})
-
-// 选择目录事项后预填默认类型/默认 runbook（后端同样会应用默认值）
+// 选择目录事项后预填默认类型/默认 runbook（处理组/处理人由后端自动派生，不在表单出现）
 watch(() => formData.catalog_item_id, (cid) => {
   if (!cid) return
   const item = catalogItems.value.find(i => i.id === cid)
   if (!item) return
   formData.ticket_type = item.default_type
   if (item.default_runbook_id && !formData.runbook_id) formData.runbook_id = item.default_runbook_id
-  // 路由配置化：目录默认处理组预填（事项级覆盖分类级），联动处理人候选
-  const derivedGroupId = item.default_group_id
-    ?? (item.parent_id !== null ? catalogItems.value.find(i => i.id === item.parent_id)?.default_group_id ?? null : null)
-  if (derivedGroupId && !formData.group_id) formData.group_id = derivedGroupId
 })
 
 // 表单目录选项：仅默认类型与当前工单类型匹配的事项，避免跨类型误选
@@ -614,12 +565,11 @@ watch(() => formData.target_resource_ids.join(','), async (key) => {
 function handleAdd() {
   editingId.value = null
   Object.assign(formData, {
-    title: '', ticket_type: 'general', priority: 'medium', assignee_id: undefined, target_resource_ids: [],
-    catalog_item_id: undefined, group_id: undefined,
+    title: '', ticket_type: 'general', priority: 'medium', target_resource_ids: [],
+    catalog_item_id: undefined,
     runbook_id: undefined, code_ref: '', jobParamsText: '', description: '',
   })
   changeContext.value = []
-  assigneeCandidates.value = null
   fetchRunbookOptions()
   fetchMetaOptions()
   searchTargetResources('')
@@ -631,7 +581,7 @@ function handleEdit() {
   editingId.value = detail.value.id
   Object.assign(formData, {
     title: detail.value.title, ticket_type: detail.value.ticket_type, priority: detail.value.priority,
-    assignee_id: detail.value.assignee_id ?? undefined, target_resource_ids: [],
+    target_resource_ids: [],
     description: detail.value.description || '',
   })
   formVisible.value = true
@@ -653,8 +603,8 @@ async function handleSubmit() {
       }
       await ticketApi.createTicket({
         title: formData.title, ticket_type: formData.ticket_type, priority: formData.priority,
-        assignee_id: formData.assignee_id ?? null, target_resource_ids: formData.target_resource_ids,
-        catalog_item_id: formData.catalog_item_id ?? null, group_id: formData.group_id ?? null,
+        target_resource_ids: formData.target_resource_ids,
+        catalog_item_id: formData.catalog_item_id ?? null,
         runbook_id: formData.ticket_type === 'change' ? (formData.runbook_id ?? null) : null,
         code_ref: formData.ticket_type === 'change' ? (formData.code_ref || null) : null,
         job_params: formData.ticket_type === 'change' ? jobParams : undefined,
@@ -721,13 +671,31 @@ async function handleDelete() {
   } catch { Message.error('删除失败') }
 }
 
-// ========== 指派 ==========
+// ========== 指派/转派（人工改派，候选接口仅在此场景使用） ==========
 const assignVisible = ref(false)
 const assignLoading = ref(false)
 const assigneeId = ref<number | undefined>(undefined)
+const assignCandidates = ref<IAssigneeCandidate[] | null>(null)
 
-function openAssignModal() {
+const assignOptions = computed(() => {
+  const base = assignCandidates.value
+    ? assignCandidates.value.map(c => ({ id: c.id, label: c.display_name || c.username }))
+    : users.value.map(u => ({ id: u.id, label: u.display_name || u.username }))
+  // 当前处理人不在候选中时保留回显
+  if (assigneeId.value && !base.some(o => o.id === assigneeId.value)) {
+    const u = users.value.find(x => x.id === assigneeId.value)
+    if (u) base.push({ id: u.id, label: u.display_name || u.username })
+  }
+  return base
+})
+
+async function openAssignModal() {
   assigneeId.value = detail.value?.assignee_id ?? undefined
+  assignCandidates.value = null
+  const gid = detail.value?.group_id
+  if (gid) {
+    try { assignCandidates.value = (await metaApi.getGroupCandidates(gid)).data } catch { /* ignore */ }
+  }
   assignVisible.value = true
 }
 
