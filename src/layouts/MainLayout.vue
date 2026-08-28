@@ -63,10 +63,12 @@
           <template #icon><icon-bar-chart /></template>
           监控日志
         </a-menu-item>
-        <a-menu-item key="Tickets">
+        <a-sub-menu key="Tickets">
           <template #icon><icon-file /></template>
-          工单系统
-        </a-menu-item>
+          <template #title>工单系统</template>
+          <a-menu-item key="TicketList">工单列表</a-menu-item>
+          <a-menu-item key="TicketConfig">工单配置</a-menu-item>
+        </a-sub-menu>
         <a-sub-menu key="System">
           <template #icon><icon-settings /></template>
           <template #title>系统管理</template>

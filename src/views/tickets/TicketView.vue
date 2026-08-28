@@ -14,6 +14,15 @@
           <a-select v-model="filters.priority" placeholder="优先级" allow-clear style="width: 120px" @change="handleSearch">
             <a-option v-for="(m, k) in priorityMap" :key="k" :value="k">{{ m.text }}</a-option>
           </a-select>
+          <a-select v-model="filters.group_id" placeholder="处理组" allow-clear style="width: 140px" @change="handleSearch">
+            <a-option v-for="g in groupOptions" :key="g.id" :value="g.id">{{ g.name }}</a-option>
+          </a-select>
+          <a-select v-model="filters.catalog_item_id" placeholder="服务目录" allow-clear show-search style="width: 180px" @change="handleSearch">
+            <a-option v-for="c in catalogLeafOptions" :key="c.id" :value="c.id">{{ c.label }}</a-option>
+          </a-select>
+          <a-button @click="openFreezeDrawer">
+            <template #icon><icon-safe /></template>封禁窗口
+          </a-button>
           <a-button type="primary" @click="handleAdd">
             <template #icon><icon-plus /></template>新建工单
           </a-button>
@@ -38,6 +47,11 @@
         <template #status="{ record }">
           <a-tag size="small" :color="statusMap[record.status]?.color || 'gray'">{{ statusMap[record.status]?.text || record.status }}</a-tag>
         </template>
+        <template #catalog="{ record }">
+          <span v-if="record.catalog_item_name">{{ record.catalog_category_name ? `${record.catalog_category_name} / ` : '' }}{{ record.catalog_item_name }}</span>
+          <span v-else>-</span>
+        </template>
+        <template #group_name="{ record }">{{ record.group_name || '-' }}</template>
         <template #assignee_name="{ record }">{{ record.assignee_name || '-' }}</template>
         <template #created_at="{ record }">{{ formatTime(record.created_at) }}</template>
         <template #actions="{ record }">
@@ -50,7 +64,7 @@
     </a-card>
 
     <!-- 新建/编辑弹窗 -->
-    <a-modal v-model:visible="formVisible" :title="editingId ? '编辑工单' : '新建工单'" :width="560" :ok-loading="formLoading" @ok="handleSubmit">
+    <a-modal v-model:visible="formVisible" :title="editingId ? '编辑工单' : '新建工单'" :width="620" :ok-loading="formLoading" @ok="handleSubmit">
       <a-form :model="formData" :rules="formRules" layout="vertical" ref="formRef">
         <a-form-item field="title" label="标题">
           <a-input v-model="formData.title" placeholder="简要描述问题或需求" />
@@ -78,9 +92,72 @@
             </a-form-item>
           </a-col>
         </a-row>
-        <a-form-item v-if="!editingId" field="related_resource_id" label="关联资源 ID">
-          <a-input-number v-model="formData.related_resource_id" placeholder="可选，CMDB 资源 ID" style="width: 100%" :min="1" />
+        <a-form-item v-if="!editingId" field="related_resource_id" label="关联资源">
+          <a-select
+            v-model="formData.related_resource_id"
+            placeholder="输入名称搜索资源"
+            allow-clear
+            allow-search
+            :filter-option="false"
+            :loading="relOptSearching"
+            @search="searchRelatedResources"
+          >
+            <a-option v-for="r in relatedResourceOptions" :key="r.id" :value="r.id">
+              {{ r.name }}（{{ r.model_code || '未知模型' }}）
+            </a-option>
+          </a-select>
         </a-form-item>
+        <template v-if="!editingId">
+          <a-row :gutter="16">
+            <a-col :span="12">
+              <a-form-item field="catalog_item_id" label="服务目录事项">
+                <a-select v-model="formData.catalog_item_id" placeholder="可选，选择后快照难度/默认类型" allow-clear show-search>
+                  <a-option v-for="c in catalogLeafOptions" :key="c.id" :value="c.id">{{ c.label }}</a-option>
+                </a-select>
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item field="group_id" label="处理组">
+                <a-select v-model="formData.group_id" placeholder="可选" allow-clear>
+                  <a-option v-for="g in groupOptions" :key="g.id" :value="g.id">{{ g.name }}</a-option>
+                </a-select>
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <p v-if="formData.group_id && !formData.assignee_id" class="form-hint">未指派处理人时，将按该组当日值班 tier1 自动轮转派单</p>
+        </template>
+
+        <!-- 变更工单：runbook 关联 + 变更上下文检查 -->
+        <template v-if="!editingId && formData.ticket_type === 'change'">
+          <a-row :gutter="16">
+            <a-col :span="12">
+              <a-form-item field="runbook_id" label="Runbook（携带后走审批）">
+                <a-select v-model="formData.runbook_id" placeholder="可选" allow-clear allow-search>
+                  <a-option v-for="rb in runbookOptions" :key="rb.id" :value="rb.id">{{ rb.name }}（v{{ rb.version }}）</a-option>
+                </a-select>
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item field="code_ref" label="代码版本（git tag）">
+                <a-input v-model="formData.code_ref" placeholder="如：v1.0.0" />
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <a-form-item field="jobParamsText" label="执行参数（JSON，审批通过后随任务下发）">
+            <a-textarea v-model="formData.jobParamsText" placeholder='{"key": "value"}' :auto-size="{ minRows: 2, maxRows: 5 }" />
+          </a-form-item>
+          <div v-if="changeContext.length" class="ctx-panel">
+            <div class="ctx-title">变更上下文检查</div>
+            <div v-for="r in changeContext" :key="r.resource_id" class="ctx-item">
+              <span class="ctx-name">{{ r.name || `#${r.resource_id}` }}</span>
+              <a-tag v-if="r.env" size="small">{{ r.env }}</a-tag>
+              <a-tag v-if="r.busy_execution_id" size="small" color="orange">任务占用 #{{ r.busy_execution_id }}</a-tag>
+              <a-tag v-for="f in r.active_freezes" :key="f.id" size="small" color="red">封禁：{{ f.name }}</a-tag>
+              <span v-if="r.recent_changes.length" class="ctx-text">近期变更 {{ r.recent_changes.length }} 条</span>
+            </div>
+          </div>
+        </template>
+
         <a-form-item field="description" label="描述">
           <a-textarea v-model="formData.description" placeholder="可选，补充背景与期望" :auto-size="{ minRows: 3, maxRows: 6 }" />
         </a-form-item>
@@ -94,6 +171,7 @@
         <a-tag v-if="detail" size="small" :color="statusMap[detail.status]?.color || 'gray'" style="margin-left: 8px">
           {{ statusMap[detail.status]?.text || detail.status }}
         </a-tag>
+        <a-tag v-if="detail?.approval_status === 'pending'" size="small" color="gold" style="margin-left: 8px">待审批</a-tag>
       </template>
 
       <div v-if="detail" class="detail-body">
@@ -111,11 +189,41 @@
             </a-link>
             <span v-else>-</span>
           </a-descriptions-item>
+          <a-descriptions-item label="服务目录">
+            <span v-if="detail.catalog_item_name">{{ detail.catalog_category_name ? `${detail.catalog_category_name} / ` : '' }}{{ detail.catalog_item_name }}</span>
+            <span v-else>-</span>
+          </a-descriptions-item>
+          <a-descriptions-item label="处理组">{{ detail.group_name || '-' }}</a-descriptions-item>
+          <a-descriptions-item v-if="detail.difficulty" label="难度">
+            <a-tag size="small" :color="DIFFICULTY_MAP[detail.difficulty]?.color || 'gray'">{{ DIFFICULTY_MAP[detail.difficulty]?.text || detail.difficulty }}</a-tag>
+          </a-descriptions-item>
+          <a-descriptions-item v-if="detail.started_at" label="开始时间">{{ formatTime(detail.started_at) }}</a-descriptions-item>
           <a-descriptions-item label="创建时间">{{ formatTime(detail.created_at) }}</a-descriptions-item>
+          <a-descriptions-item v-if="detail.runbook_id" label="Runbook">#{{ detail.runbook_id }}（{{ detail.code_ref || '未指定版本' }}）</a-descriptions-item>
           <a-descriptions-item v-if="detail.resolved_at" label="解决时间">{{ formatTime(detail.resolved_at) }}</a-descriptions-item>
           <a-descriptions-item v-if="detail.closed_at" label="关闭时间">{{ formatTime(detail.closed_at) }}</a-descriptions-item>
           <a-descriptions-item label="描述" :span="2">{{ detail.description || '-' }}</a-descriptions-item>
         </a-descriptions>
+
+        <!-- 审批操作 -->
+        <div v-if="detail.approval_status === 'pending'" class="approval-bar">
+          <span class="approval-hint">变更工单待审批（创建人不可审批自己的工单）</span>
+          <a-space>
+            <a-button type="primary" size="small" status="success" @click="openApprovalModal('approve')">通过</a-button>
+            <a-button size="small" status="danger" @click="openApprovalModal('reject')">拒绝</a-button>
+          </a-space>
+        </div>
+
+        <!-- 关联任务执行 -->
+        <div v-if="detail.job_execution" class="job-bar">
+          <span class="section-title">关联任务</span>
+          <a-link @click="$router.push({ name: 'JobExecutionDetail', params: { id: String(detail.job_execution.id) } })">
+            #{{ detail.job_execution.id }}
+          </a-link>
+          <a-tag size="small" :color="executionStatus(detail.job_execution.status).color">
+            {{ executionStatus(detail.job_execution.status).text }}
+          </a-tag>
+        </div>
 
         <!-- 操作区 -->
         <a-space wrap class="action-bar">
@@ -137,6 +245,21 @@
             <a-button size="small" status="danger"><template #icon><icon-delete /></template>删除</a-button>
           </a-popconfirm>
         </a-space>
+
+        <!-- 审批记录 -->
+        <template v-if="detail.approvals.length">
+          <div class="section-title">审批记录</div>
+          <a-timeline class="timeline">
+            <a-timeline-item v-for="a in detail.approvals" :key="a.id">
+              <div class="comment-line">
+                <span class="comment-user">{{ a.approver_name || `#${a.approver_id}` }}</span>
+                <a-tag size="small" :color="a.action === 'approve' ? 'green' : 'red'">{{ a.action === 'approve' ? '通过' : '拒绝' }}</a-tag>
+                <span class="comment-time">{{ formatTime(a.created_at) }}</span>
+              </div>
+              <div v-if="a.comment" class="comment-content">{{ a.comment }}</div>
+            </a-timeline-item>
+          </a-timeline>
+        </template>
 
         <!-- 流转记录 -->
         <div class="section-title">流转记录</div>
@@ -172,20 +295,75 @@
     <a-modal v-model:visible="statusModalVisible" :title="statusModalLabel" :width="420" :ok-loading="statusLoading" @ok="handleStatusChange">
       <a-textarea v-model="statusComment" placeholder="流转备注（可选）" :auto-size="{ minRows: 2, maxRows: 4 }" />
     </a-modal>
+
+    <!-- 审批弹窗 -->
+    <a-modal v-model:visible="approvalVisible" :title="approvalAction === 'approve' ? '审批通过' : '审批拒绝'" :width="420" :ok-loading="approvalLoading" @ok="handleApproval">
+      <a-textarea v-model="approvalComment" placeholder="审批意见（可选）" :auto-size="{ minRows: 2, maxRows: 4 }" />
+    </a-modal>
+
+    <!-- 封禁窗口抽屉 -->
+    <a-drawer v-model:visible="freezeVisible" title="变更封禁窗口" :width="620" unmount-on-close>
+      <div class="freeze-head">
+        <a-button type="primary" size="small" @click="freezeFormVisible = !freezeFormVisible">
+          <template #icon><icon-plus /></template>新建封禁
+        </a-button>
+      </div>
+      <a-form v-if="freezeFormVisible" :model="freezeForm" layout="vertical" class="freeze-form">
+        <a-row :gutter="16">
+          <a-col :span="12"><a-form-item label="名称"><a-input v-model="freezeForm.name" placeholder="如：双十一封网" /></a-form-item></a-col>
+          <a-col :span="12"><a-form-item label="原因"><a-input v-model="freezeForm.reason" placeholder="可选" /></a-form-item></a-col>
+        </a-row>
+        <a-form-item label="限定模型（留空为全局封禁）">
+          <a-input-tag v-model="freezeForm.scope" placeholder="模型 code，如 aliyun_ecs" allow-clear />
+        </a-form-item>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="开始时间"><a-date-picker v-model="freezeForm.starts_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="结束时间"><a-date-picker v-model="freezeForm.ends_at" show-time value-format="YYYY-MM-DD HH:mm:ss" style="width: 100%" /></a-form-item>
+          </a-col>
+        </a-row>
+        <a-button type="primary" size="small" :loading="freezeCreating" @click="handleCreateFreeze">创建</a-button>
+      </a-form>
+      <a-table :data="freezes" :loading="freezeLoading" :columns="freezeColumns" :pagination="false" size="small" row-key="id" style="margin-top: 12px">
+        <template #scope="{ record }">
+          <a-space wrap size="mini" v-if="(record.scope || []).length">
+            <a-tag v-for="s in record.scope" :key="s" size="small">{{ s }}</a-tag>
+          </a-space>
+          <a-tag v-else size="small" color="red">全局</a-tag>
+        </template>
+        <template #window="{ record }">{{ formatTime(record.starts_at) }} ~ {{ formatTime(record.ends_at) }}</template>
+        <template #freeze_actions="{ record }">
+          <a-popconfirm content="确定删除该封禁窗口？" @ok="handleDeleteFreeze(record.id)">
+            <a-button type="text" size="small" status="danger"><template #icon><icon-delete /></template></a-button>
+          </a-popconfirm>
+        </template>
+      </a-table>
+    </a-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { IconPlus, IconEdit, IconDelete, IconUser } from '@arco-design/web-vue/es/icon'
+import { IconPlus, IconEdit, IconDelete, IconUser, IconSafe } from '@arco-design/web-vue/es/icon'
 import * as ticketApi from '../../api/ticket'
-import type { ITicket, ITicketDetail, ITicketComment } from '../../api/ticket'
+import type { ITicket, ITicketDetail, ITicketComment, IFreeze, IChangeContextResource } from '../../api/ticket'
+import * as metaApi from '../../api/ticketMeta'
+import { DIFFICULTY_MAP } from '../../api/ticketMeta'
+import type { ICatalogItem, ITicketGroup } from '../../api/ticketMeta'
+import * as jobApi from '../../api/job'
+import { executionStatus } from '../../api/job'
+import type { IRunbook } from '../../api/job'
+import { getResourceOptions } from '../../api/cmdb'
+import type { IResourceOption } from '../../api/cmdb'
 import { getUserList } from '../../api/user'
 import type { IUser } from '../../types/user'
 
 // ========== 字典 ==========
 const statusMap: Record<string, { text: string; color: string }> = {
+  pending_approval: { text: '待审批', color: 'gold' },
   open: { text: '待处理', color: 'blue' },
   in_progress: { text: '处理中', color: 'orange' },
   resolved: { text: '已解决', color: 'green' },
@@ -199,8 +377,11 @@ const priorityMap: Record<string, { text: string; color: string }> = {
   high: { text: '高', color: 'orange' },
   urgent: { text: '紧急', color: 'red' },
 }
-// 与后端 STATUS_TRANSITIONS 保持一致
+// 与后端 STATUS_TRANSITIONS 保持一致（pending_approval 仅允许取消，审批走专用端点）
 const STATUS_ACTIONS: Record<string, Array<{ target: string; label: string; danger?: boolean; primary?: boolean }>> = {
+  pending_approval: [
+    { target: 'cancelled', label: '取消工单', danger: true },
+  ],
   open: [
     { target: 'in_progress', label: '开始处理', primary: true },
     { target: 'cancelled', label: '取消工单', danger: true },
@@ -223,7 +404,7 @@ function formatTime(t: string | null) {
 // ========== 列表 ==========
 const loading = ref(false)
 const tickets = ref<ITicket[]>([])
-const filters = reactive({ keyword: '', status: undefined as string | undefined, ticket_type: undefined as string | undefined, priority: undefined as string | undefined })
+const filters = reactive({ keyword: '', status: undefined as string | undefined, ticket_type: undefined as string | undefined, priority: undefined as string | undefined, group_id: undefined as number | undefined, catalog_item_id: undefined as number | undefined })
 const pagination = reactive({ current: 1, pageSize: 20, total: 0, showTotal: true, showPageSize: true })
 
 const columns = [
@@ -232,6 +413,8 @@ const columns = [
   { title: '类型', slotName: 'ticket_type', width: 80 },
   { title: '优先级', slotName: 'priority', width: 80 },
   { title: '状态', slotName: 'status', width: 90 },
+  { title: '目录', slotName: 'catalog', width: 150, ellipsis: true },
+  { title: '处理组', slotName: 'group_name', width: 100 },
   { title: '处理人', slotName: 'assignee_name', width: 100 },
   { title: '创建时间', slotName: 'created_at', width: 150 },
   { title: '操作', slotName: 'actions', width: 70 },
@@ -245,6 +428,8 @@ async function fetchData() {
       status: filters.status,
       ticket_type: filters.ticket_type,
       priority: filters.priority,
+      group_id: filters.group_id,
+      catalog_item_id: filters.catalog_item_id,
       page: pagination.current,
       page_size: pagination.pageSize,
     })
@@ -274,16 +459,79 @@ const formVisible = ref(false)
 const formLoading = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref()
+const runbookOptions = ref<IRunbook[]>([])
+const changeContext = ref<IChangeContextResource[]>([])
+const groupOptions = ref<ITicketGroup[]>([])
+const catalogItems = ref<ICatalogItem[]>([])
+const catalogLeafOptions = computed(() => {
+  const cats = new Map(catalogItems.value.filter(i => i.parent_id === null).map(i => [i.id, i.name]))
+  return catalogItems.value
+    .filter(i => i.parent_id !== null && i.is_active)
+    .map(i => ({ id: i.id, label: `${cats.get(i.parent_id as number) || ''} / ${i.name}` }))
+})
+
+async function fetchMetaOptions() {
+  try { groupOptions.value = (await metaApi.getGroups()).data } catch { /* ignore */ }
+  try { catalogItems.value = (await metaApi.getCatalog()).data } catch { /* ignore */ }
+}
+
+// 关联资源选择器（轻量搜索接口）
+const relatedResourceOptions = ref<IResourceOption[]>([])
+const relOptSearching = ref(false)
+
+async function searchRelatedResources(keyword: string) {
+  relOptSearching.value = true
+  try {
+    const res = await getResourceOptions({ keyword: keyword || undefined, limit: 20 })
+    // 保留已选项避免回显丢失
+    const merged = [...res.data]
+    for (const r of relatedResourceOptions.value) {
+      if (formData.related_resource_id === r.id && !merged.some(m => m.id === r.id)) merged.push(r)
+    }
+    relatedResourceOptions.value = merged
+  } catch { /* ignore */ } finally { relOptSearching.value = false }
+}
+
 const formData = reactive({
   title: '', ticket_type: 'general', priority: 'medium',
   assignee_id: undefined as number | undefined, related_resource_id: undefined as number | undefined,
+  catalog_item_id: undefined as number | undefined, group_id: undefined as number | undefined,
+  runbook_id: undefined as number | undefined, code_ref: '', jobParamsText: '',
   description: '',
+})
+
+// 选择目录事项后预填默认类型/默认 runbook（后端同样会应用默认值）
+watch(() => formData.catalog_item_id, (cid) => {
+  if (!cid) return
+  const item = catalogItems.value.find(i => i.id === cid)
+  if (!item) return
+  formData.ticket_type = item.default_type
+  if (item.default_runbook_id && !formData.runbook_id) formData.runbook_id = item.default_runbook_id
 })
 const formRules = { title: [{ required: true, message: '请输入标题' }] }
 
+async function fetchRunbookOptions() {
+  try { const res = await jobApi.getRunbooks({ page: 1, page_size: 100 }); runbookOptions.value = res.data.items } catch { /* ignore */ }
+}
+
+// 变更工单选择关联资源后拉取变更上下文（封禁/占用/近期变更）
+watch(() => formData.related_resource_id, async (rid) => {
+  changeContext.value = []
+  if (!rid || formData.ticket_type !== 'change') return
+  try { changeContext.value = (await ticketApi.getChangeContext([rid])).data } catch { /* ignore */ }
+})
+
 function handleAdd() {
   editingId.value = null
-  Object.assign(formData, { title: '', ticket_type: 'general', priority: 'medium', assignee_id: undefined, related_resource_id: undefined, description: '' })
+  Object.assign(formData, {
+    title: '', ticket_type: 'general', priority: 'medium', assignee_id: undefined, related_resource_id: undefined,
+    catalog_item_id: undefined, group_id: undefined,
+    runbook_id: undefined, code_ref: '', jobParamsText: '', description: '',
+  })
+  changeContext.value = []
+  fetchRunbookOptions()
+  fetchMetaOptions()
+  searchRelatedResources('')
   formVisible.value = true
 }
 
@@ -308,9 +556,17 @@ async function handleSubmit() {
         title: formData.title, priority: formData.priority, description: formData.description || null,
       })
     } else {
+      let jobParams: Record<string, unknown> = {}
+      if (formData.jobParamsText.trim()) {
+        try { jobParams = JSON.parse(formData.jobParamsText) } catch { Message.warning('执行参数不是合法 JSON'); formLoading.value = false; return }
+      }
       await ticketApi.createTicket({
         title: formData.title, ticket_type: formData.ticket_type, priority: formData.priority,
         assignee_id: formData.assignee_id ?? null, related_resource_id: formData.related_resource_id ?? null,
+        catalog_item_id: formData.catalog_item_id ?? null, group_id: formData.group_id ?? null,
+        runbook_id: formData.ticket_type === 'change' ? (formData.runbook_id ?? null) : null,
+        code_ref: formData.ticket_type === 'change' ? (formData.code_ref || null) : null,
+        job_params: formData.ticket_type === 'change' ? jobParams : undefined,
         description: formData.description || null,
       })
     }
@@ -341,6 +597,8 @@ function actionText(c: ITicketComment) {
   if (c.action === 'create') return '创建了工单'
   if (c.action === 'assign') return '指派了处理人'
   if (c.action === 'update') return '更新了工单'
+  if (c.action === 'approve') return '审批通过'
+  if (c.action === 'reject') return '审批拒绝'
   return c.action
 }
 
@@ -402,6 +660,30 @@ async function handleStatusChange() {
   } catch { Message.error('状态流转失败') } finally { statusLoading.value = false }
 }
 
+// ========== 审批 ==========
+const approvalVisible = ref(false)
+const approvalAction = ref<'approve' | 'reject'>('approve')
+const approvalComment = ref('')
+const approvalLoading = ref(false)
+
+function openApprovalModal(action: 'approve' | 'reject') {
+  approvalAction.value = action
+  approvalComment.value = ''
+  approvalVisible.value = true
+}
+
+async function handleApproval() {
+  if (!detail.value) return
+  approvalLoading.value = true
+  try {
+    await ticketApi.approveTicket(detail.value.id, approvalAction.value, approvalComment.value || null)
+    Message.success(approvalAction.value === 'approve' ? '已通过，工单转待处理' : '已拒绝，工单取消')
+    approvalVisible.value = false
+    openDetail(detail.value.id)
+    fetchData()
+  } catch { /* 拦截器已提示（如创建人自审） */ } finally { approvalLoading.value = false }
+}
+
 // ========== 评论 ==========
 const commentText = ref('')
 const commentLoading = ref(false)
@@ -414,6 +696,53 @@ async function handleComment() {
     commentText.value = ''
     openDetail(detail.value.id)
   } catch { Message.error('评论失败') } finally { commentLoading.value = false }
+}
+
+// ========== 封禁窗口 ==========
+const freezeVisible = ref(false)
+const freezeLoading = ref(false)
+const freezes = ref<IFreeze[]>([])
+const freezeFormVisible = ref(false)
+const freezeCreating = ref(false)
+const freezeForm = reactive({ name: '', reason: '', scope: [] as string[], starts_at: '', ends_at: '' })
+
+const freezeColumns = [
+  { title: '名称', dataIndex: 'name', width: 140, ellipsis: true },
+  { title: '范围', slotName: 'scope', width: 140 },
+  { title: '时间窗口', slotName: 'window', width: 220 },
+  { title: '操作', slotName: 'freeze_actions', width: 60 },
+]
+
+async function fetchFreezes() {
+  freezeLoading.value = true
+  try { freezes.value = (await ticketApi.getFreezes()).data } catch { /* ignore */ } finally { freezeLoading.value = false }
+}
+
+function openFreezeDrawer() {
+  freezeVisible.value = true
+  fetchFreezes()
+}
+
+async function handleCreateFreeze() {
+  if (!freezeForm.name || !freezeForm.starts_at || !freezeForm.ends_at) { Message.warning('名称与起止时间必填'); return }
+  freezeCreating.value = true
+  try {
+    await ticketApi.createFreeze({
+      name: freezeForm.name,
+      reason: freezeForm.reason || null,
+      scope: freezeForm.scope.length ? freezeForm.scope : null,
+      starts_at: new Date(freezeForm.starts_at).toISOString(),
+      ends_at: new Date(freezeForm.ends_at).toISOString(),
+    })
+    Message.success('封禁窗口已创建')
+    freezeFormVisible.value = false
+    Object.assign(freezeForm, { name: '', reason: '', scope: [], starts_at: '', ends_at: '' })
+    fetchFreezes()
+  } catch { /* 拦截器已提示 */ } finally { freezeCreating.value = false }
+}
+
+async function handleDeleteFreeze(id: number) {
+  try { await ticketApi.deleteFreeze(id); Message.success('已删除'); fetchFreezes() } catch { /* 拦截器已提示 */ }
 }
 
 onMounted(() => { fetchData(); fetchUsers() })
@@ -434,13 +763,36 @@ onMounted(() => { fetchData(); fetchUsers() })
 .action-bar { padding: $spacing-sm 0; border-top: 1px solid $border-color-light; border-bottom: 1px solid $border-color-light; }
 .section-title { font-size: $font-size-base; font-weight: 600; color: $text-primary; }
 
+.approval-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: $spacing-sm; background: rgba(250, 173, 20, 0.08);
+  border: 1px solid rgba(250, 173, 20, 0.35); border-radius: $radius-md;
+  .approval-hint { font-size: $font-size-xs; color: $text-secondary; }
+}
+
+.job-bar { display: flex; align-items: center; gap: $spacing-sm; }
+
+.ctx-panel {
+  margin-bottom: $spacing-md; padding: $spacing-sm;
+  background: rgba(22, 119, 255, 0.04); border: 1px solid $border-color-light; border-radius: $radius-md;
+  .ctx-title { font-size: $font-size-xs; font-weight: 600; color: $text-secondary; margin-bottom: 4px; }
+  .ctx-item { display: flex; align-items: center; gap: $spacing-xs; flex-wrap: wrap; padding: 2px 0; }
+  .ctx-name { font-size: $font-size-sm; color: $text-primary; font-weight: 500; }
+  .ctx-text { font-size: $font-size-xs; color: $text-secondary; }
+}
+
 .timeline {
   .comment-line { display: flex; align-items: baseline; gap: $spacing-sm; flex-wrap: wrap; }
   .comment-user { font-weight: 600; color: $text-primary; }
   .comment-action { color: $text-secondary; }
-  .comment-time { color: $text-tertiary; font-size: $font-size-sm; }
+  .comment-time { color: $text-disabled; font-size: $font-size-sm; }
   .comment-content { margin-top: 4px; color: $text-secondary; white-space: pre-wrap; }
 }
 
 .comment-input { display: flex; flex-direction: column; gap: $spacing-sm; align-items: flex-end; }
+
+.form-hint { font-size: $font-size-xs; color: $text-secondary; margin: -8px 0 12px; }
+
+.freeze-head { display: flex; justify-content: flex-end; margin-bottom: $spacing-sm; }
+.freeze-form { padding: $spacing-sm; background: rgba(22, 119, 255, 0.04); border: 1px solid $border-color-light; border-radius: $radius-md; margin-bottom: $spacing-sm; }
 </style>

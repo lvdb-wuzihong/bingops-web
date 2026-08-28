@@ -71,6 +71,20 @@ export function getResourceList(params?: IResourceQuery) {
   return request.get<IPaginatedData<ICmdbResource>>('/api/v1/cmdb/resources', { params })
 }
 
+// 资源选择器轻量搜索（工单关联资源等下拉场景）
+export interface IResourceOption {
+  id: number
+  name: string
+  model_code: string | null
+  provider: string | null
+  region: string | null
+  status: string
+}
+
+export function getResourceOptions(params?: { keyword?: string; model_id?: number; limit?: number }) {
+  return request.get<IResourceOption[]>('/api/v1/cmdb/resources/options', { params })
+}
+
 // 获取资源详情
 export function getResourceDetail(id: number) {
   return request.get<ICmdbResource>(`/api/v1/cmdb/resources/${id}`)

@@ -177,6 +177,7 @@ export const EXECUTION_STATUS_MAP: Record<string, { text: string; color: string 
   rolling_back: { text: '回滚中', color: 'orange' },
   rolled_back: { text: '已回滚', color: 'purple' },
   partial_rollback: { text: '部分回滚', color: 'magenta' },
+  rollback_failed: { text: '回滚失败', color: 'red' },
 }
 
 export function executionStatus(s: string) {

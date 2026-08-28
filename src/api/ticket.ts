@@ -16,6 +16,18 @@ export interface ITicket {
   assignee_id: number | null
   assignee_name: string | null
   related_resource_id: number | null
+  runbook_id: number | null
+  job_params: Record<string, unknown>
+  code_ref: string | null
+  // none|pending|approved|rejected
+  approval_status: string | null
+  catalog_item_id: number | null
+  catalog_item_name: string | null
+  catalog_category_name: string | null
+  group_id: number | null
+  group_name: string | null
+  difficulty: string | null
+  started_at: string | null
   resolved_at: string | null
   closed_at: string | null
   created_at: string
@@ -36,6 +48,57 @@ export interface ITicketComment {
 
 export interface ITicketDetail extends ITicket {
   comments: ITicketComment[]
+  approvals: IApproval[]
+  job_execution: IJobExecutionSummary | null
+}
+
+export interface IApproval {
+  id: number
+  ticket_id: number
+  approver_id: number
+  approver_name: string | null
+  action: string
+  comment: string | null
+  created_at: string
+}
+
+export interface IJobExecutionSummary {
+  id: number
+  runbook_id: number
+  status: string
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface IFreeze {
+  id: number
+  name: string
+  reason: string | null
+  scope: string[] | null
+  starts_at: string
+  ends_at: string
+  created_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface IFreezeCreate {
+  name: string
+  reason?: string | null
+  scope?: string[] | null
+  starts_at: string
+  ends_at: string
+}
+
+export interface IChangeContextResource {
+  resource_id: number
+  name: string | null
+  model_code: string | null
+  status: string | null
+  env: string | null
+  recent_changes: Record<string, unknown>[]
+  busy_execution_id: number | null
+  active_freezes: { id: number; name: string; reason: string | null; starts_at: string; ends_at: string }[]
 }
 
 export interface ITicketQuery extends IPageParams {
@@ -44,6 +107,8 @@ export interface ITicketQuery extends IPageParams {
   priority?: string
   creator_id?: number
   assignee_id?: number
+  group_id?: number
+  catalog_item_id?: number
   keyword?: string
 }
 
@@ -54,6 +119,11 @@ export interface ITicketCreate {
   priority?: string
   assignee_id?: number | null
   related_resource_id?: number | null
+  catalog_item_id?: number | null
+  group_id?: number | null
+  runbook_id?: number | null
+  job_params?: Record<string, unknown>
+  code_ref?: string | null
 }
 
 export interface ITicketUpdate {
@@ -100,4 +170,30 @@ export function getTicketComments(id: number) {
 
 export function addTicketComment(id: number, content: string) {
   return request.post<ITicketComment>(`/api/v1/tickets/${id}/comments`, { content })
+}
+
+// ========== 审批 ==========
+
+export function approveTicket(id: number, action: 'approve' | 'reject', comment?: string | null) {
+  return request.post<ITicket>(`/api/v1/tickets/${id}/approve`, { action, comment: comment || null })
+}
+
+// ========== 变更封禁窗口 ==========
+
+export function getFreezes(activeOnly = false) {
+  return request.get<IFreeze[]>('/api/v1/tickets/freezes', { params: { active_only: activeOnly } })
+}
+
+export function createFreeze(data: IFreezeCreate) {
+  return request.post<IFreeze>('/api/v1/tickets/freezes', data)
+}
+
+export function deleteFreeze(id: number) {
+  return request.delete<null>(`/api/v1/tickets/freezes/${id}`)
+}
+
+// ========== 变更上下文 ==========
+
+export function getChangeContext(resourceIds: number[]) {
+  return request.get<IChangeContextResource[]>('/api/v1/tickets/change-context', { params: { resource_ids: resourceIds.join(',') } })
 }
