@@ -257,7 +257,17 @@ const userMap = computed(() => {
 })
 function userName(id: number) { return userMap.value[id] || `#${id}` }
 async function fetchUsers() {
-  try { const res = await getUserList({ page: 1, page_size: 200 }); users.value = res.data.items } catch { /* ignore */ }
+  try {
+    // 后端 page_size 上限 100，分页累加取全，避免成员/值班人选缺失
+    const first = await getUserList({ page: 1, page_size: 100 })
+    const all = [...first.data.items]
+    const total = first.data.pagination.total
+    for (let p = 2; all.length < total && p <= 5; p++) {
+      const res = await getUserList({ page: p, page_size: 100 })
+      all.push(...res.data.items)
+    }
+    users.value = all
+  } catch { /* ignore */ }
 }
 
 // ========== 服务目录 ==========
