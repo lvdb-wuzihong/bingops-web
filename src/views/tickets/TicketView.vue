@@ -98,45 +98,20 @@
             </a-form-item>
           </a-col>
         </a-row>
-        <a-form-item v-if="!editingId" field="target_resource_ids" :label="targetRequired ? '执行目标（关联 Runbook 必填）' : '执行目标'">
-          <a-select
-            v-model="formData.target_resource_ids"
-            placeholder="输入名称/实例 ID 搜索资源，可多选"
-            allow-clear
-            allow-search
-            multiple
-            :filter-option="false"
-            :loading="targetSearching"
-            @search="searchTargetResources"
-          >
-            <a-option v-for="r in targetResourceOptions" :key="r.id" :value="r.id">
-              {{ r.name }}（{{ r.model_code || '-' }} / {{ r.region || '-' }}）
-            </a-option>
-          </a-select>
-        </a-form-item>
+        <!-- v18：提单人不选资源（申请类是造资源，存量尚不存在）；上下文挂靠业务应用 -->
         <template v-if="!editingId">
           <a-form-item field="catalog_item_id" label="服务目录事项">
             <a-select v-model="formData.catalog_item_id" placeholder="按当前类型过滤，选择后快照难度/默认 Runbook" allow-clear show-search>
               <a-option v-for="c in formCatalogOptions" :key="c.id" :value="c.id">{{ c.label }}</a-option>
             </a-select>
           </a-form-item>
+          <a-form-item field="business_app_id" label="业务应用（可选）">
+            <a-select v-model="formData.business_app_id" placeholder="上下文挂靠：该单归属哪个应用" allow-clear show-search>
+              <a-option v-for="a in appOptions" :key="a.id" :value="a.id">{{ a.name }}（{{ a.app_code }}）</a-option>
+            </a-select>
+          </a-form-item>
           <p class="form-hint">处理组按目录默认配置自动派生（事项优先于分类）；处理人按当日值班 tier1 → 组成员轮转自动分派，创建后可在详情人工改派</p>
-        </template>
-
-        <!-- 变更工单：变更上下文检查（runbook 由目录配置自动携带，运维建单后下发） -->
-        <template v-if="!editingId && formData.ticket_type === 'change'">
-          <p class="form-hint">所选目录事项配置了默认 Runbook 时将自动携带（中高危走审批）；建单后由运维补 git tag 下发执行，提单人无需接触</p>
-          <div v-if="changeContext.length" class="ctx-panel">
-            <div class="ctx-title">变更上下文检查</div>
-            <div v-for="r in changeContext" :key="r.resource_id" class="ctx-item">
-              <span class="ctx-name">{{ r.name || `#${r.resource_id}` }}</span>
-              <a-tag v-if="r.env" size="small">{{ r.env }}</a-tag>
-              <a-tag v-if="r.busy_execution_id" size="small" color="orange">任务占用 #{{ r.busy_execution_id }}</a-tag>
-              <a-tag v-for="t in r.active_tickets" :key="t.id" size="small" color="gold">活跃工单 {{ t.ticket_no }}</a-tag>
-              <a-tag v-for="f in r.active_freezes" :key="f.id" size="small" color="red">封禁：{{ f.name }}</a-tag>
-              <span v-if="r.recent_changes.length" class="ctx-text">近期变更 {{ r.recent_changes.length }} 条</span>
-            </div>
-          </div>
+          <p v-if="catalogHasRunbook" class="form-hint">该事项配置了默认 Runbook，将自动携带（中高危走审批）；建单后由运维补 git tag 与执行目标并下发，提单人无需选资源</p>
         </template>
 
         <a-form-item field="description" label="描述">
@@ -184,6 +159,7 @@
           <a-descriptions-item v-if="detail.started_at" label="开始时间">{{ formatTime(detail.started_at) }}</a-descriptions-item>
           <a-descriptions-item label="创建时间">{{ formatTime(detail.created_at) }}</a-descriptions-item>
           <a-descriptions-item v-if="detail.runbook_id" label="Runbook">#{{ detail.runbook_id }}（{{ detail.code_ref || '未指定版本' }}）</a-descriptions-item>
+          <a-descriptions-item v-if="detail.business_app_name" label="业务应用">{{ detail.business_app_name }}</a-descriptions-item>
           <a-descriptions-item v-if="detail.resolved_at" label="解决时间">{{ formatTime(detail.resolved_at) }}</a-descriptions-item>
           <a-descriptions-item v-if="detail.closed_at" label="关闭时间">{{ formatTime(detail.closed_at) }}</a-descriptions-item>
           <a-descriptions-item label="描述" :span="2">{{ detail.description || '-' }}</a-descriptions-item>
@@ -296,6 +272,22 @@
         <a-form-item label="代码版本（git tag）" required>
           <a-input v-model="dispatchForm.code_ref" placeholder="如：v1.0.0" />
         </a-form-item>
+        <a-form-item label="执行目标（必填：本次优先，否则用工单已有目标）">
+          <a-select
+            v-model="dispatchForm.target_ids"
+            placeholder="输入名称/实例 ID 搜索资源，可多选"
+            allow-clear
+            allow-search
+            multiple
+            :filter-option="false"
+            :loading="targetSearching"
+            @search="searchTargetResources"
+          >
+            <a-option v-for="r in targetResourceOptions" :key="r.id" :value="r.id">
+              {{ r.name }}（{{ r.model_code || '-' }} / {{ r.region || '-' }}）
+            </a-option>
+          </a-select>
+        </a-form-item>
         <a-form-item label="执行参数（JSON，可选）">
           <a-textarea v-model="dispatchForm.paramsText" placeholder='{"key": "value"}' :auto-size="{ minRows: 2, maxRows: 5 }" />
         </a-form-item>
@@ -350,7 +342,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconEdit, IconDelete, IconUser, IconSafe, IconThunderbolt } from '@arco-design/web-vue/es/icon'
 import * as ticketApi from '../../api/ticket'
-import type { ITicket, ITicketDetail, ITicketComment, IFreeze, IChangeContextResource } from '../../api/ticket'
+import type { ITicket, ITicketDetail, ITicketComment, IFreeze } from '../../api/ticket'
 import * as metaApi from '../../api/ticketMeta'
 import { DIFFICULTY_MAP } from '../../api/ticketMeta'
 import type { ICatalogItem, ITicketGroup, IAssigneeCandidate } from '../../api/ticketMeta'
@@ -359,6 +351,8 @@ import { getResourceOptions, getResourceDetail } from '../../api/cmdb'
 import type { IResourceOption } from '../../api/cmdb'
 import { getUserList } from '../../api/user'
 import type { IUser } from '../../types/user'
+import { getApps } from '../../api/app'
+import type { IBusinessApp } from '../../api/app'
 import { useUserStore } from '../../stores/user'
 
 // ========== 字典 ==========
@@ -454,9 +448,13 @@ const formVisible = ref(false)
 const formLoading = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref()
-const changeContext = ref<IChangeContextResource[]>([])
 const groupOptions = ref<ITicketGroup[]>([])
 const catalogItems = ref<ICatalogItem[]>([])
+const appOptions = ref<IBusinessApp[]>([])
+
+async function fetchApps() {
+  try { appOptions.value = (await getApps({ page: 1, page_size: 100 })).data.items } catch { /* ignore */ }
+}
 const catalogLeafOptions = computed(() => {
   const cats = new Map(catalogItems.value.filter(i => i.parent_id === null).map(i => [i.id, i.name]))
   return catalogItems.value
@@ -477,10 +475,10 @@ async function searchTargetResources(keyword: string) {
   targetSearching.value = true
   try {
     const res = await getResourceOptions({ keyword: keyword || undefined, limit: 20 })
-    // 保留已选项避免回显丢失
+    // 保留已选项避免回显丢失（下发弹窗用）
     const merged = [...res.data]
     for (const r of targetResourceOptions.value) {
-      if (formData.target_resource_ids.includes(r.id) && !merged.some(m => m.id === r.id)) merged.push(r)
+      if (dispatchForm.target_ids.includes(r.id) && !merged.some(m => m.id === r.id)) merged.push(r)
     }
     targetResourceOptions.value = merged
   } catch { /* ignore */ } finally { targetSearching.value = false }
@@ -504,8 +502,8 @@ async function searchFilterResources(keyword: string) {
 
 const formData = reactive({
   title: '', ticket_type: 'general', priority: 'medium',
-  target_resource_ids: [] as number[],
   catalog_item_id: undefined as number | undefined,
+  business_app_id: undefined as number | undefined,
   description: '',
 })
 
@@ -531,39 +529,23 @@ watch(() => formData.ticket_type, (t) => {
   const item = catalogItems.value.find(i => i.id === formData.catalog_item_id)
   if (item && item.default_type !== t) formData.catalog_item_id = undefined
 })
-const formRules = computed(() => ({
-  title: [{ required: true, message: '请输入标题' }],
-  target_resource_ids: targetRequired.value
-    ? [{ required: true, message: '工单关联了 Runbook，必须选择执行目标' }]
-    : [],
-}))
+const formRules = { title: [{ required: true, message: '请输入标题' }] }
 
-// 条件必填：目录事项绑了 runbook 时目标必填（与后端 _validate_runbook_intent 同规则）
-const targetRequired = computed(() => {
-  if (formData.catalog_item_id) {
-    const item = catalogItems.value.find(i => i.id === formData.catalog_item_id)
-    if (item?.default_runbook_id) return true
-  }
-  return false
-})
-
-// 变更工单选定执行目标后拉取变更上下文（封禁/占用/活跃工单/近期变更）
-watch(() => formData.target_resource_ids.join(','), async (key) => {
-  changeContext.value = []
-  if (!key || formData.ticket_type !== 'change') return
-  try { changeContext.value = (await ticketApi.getChangeContext([...formData.target_resource_ids])).data } catch { /* ignore */ }
+// 所选目录事项是否带默认 Runbook（驱动提示文案）
+const catalogHasRunbook = computed(() => {
+  if (!formData.catalog_item_id) return false
+  return !!catalogItems.value.find(i => i.id === formData.catalog_item_id)?.default_runbook_id
 })
 
 function handleAdd() {
   editingId.value = null
   Object.assign(formData, {
-    title: '', ticket_type: 'general', priority: 'medium', target_resource_ids: [],
-    catalog_item_id: undefined,
+    title: '', ticket_type: 'general', priority: 'medium',
+    catalog_item_id: undefined, business_app_id: undefined,
     description: '',
   })
-  changeContext.value = []
   fetchMetaOptions()
-  searchTargetResources('')
+  fetchApps()
   formVisible.value = true
 }
 
@@ -572,7 +554,7 @@ function handleEdit() {
   editingId.value = detail.value.id
   Object.assign(formData, {
     title: detail.value.title, ticket_type: detail.value.ticket_type, priority: detail.value.priority,
-    target_resource_ids: [],
+    business_app_id: detail.value.business_app_id ?? undefined,
     description: detail.value.description || '',
   })
   formVisible.value = true
@@ -590,8 +572,8 @@ async function handleSubmit() {
     } else {
       await ticketApi.createTicket({
         title: formData.title, ticket_type: formData.ticket_type, priority: formData.priority,
-        target_resource_ids: formData.target_resource_ids,
         catalog_item_id: formData.catalog_item_id ?? null,
+        business_app_id: formData.business_app_id ?? null,
         description: formData.description || null,
       })
     }
@@ -749,7 +731,7 @@ async function handleApproval() {
 const userStore = useUserStore()
 const dispatchVisible = ref(false)
 const dispatchLoading = ref(false)
-const dispatchForm = reactive({ code_ref: '', paramsText: '' })
+const dispatchForm = reactive({ code_ref: '', paramsText: '', target_ids: [] as number[] })
 
 // runbook 由目录配置携带；工单 open 且当前用户有 job:create 时才显示下发入口
 const canDispatch = computed(() =>
@@ -757,20 +739,30 @@ const canDispatch = computed(() =>
 )
 
 function openDispatchModal() {
-  Object.assign(dispatchForm, { code_ref: detail.value?.code_ref || '', paramsText: '' })
+  Object.assign(dispatchForm, {
+    code_ref: detail.value?.code_ref || '',
+    paramsText: '',
+    // 预填工单已有目标（本次传入优先，否则用已有）
+    target_ids: [...(detail.value?.target_resource_ids ?? [])],
+  })
+  searchTargetResources('')
   dispatchVisible.value = true
 }
 
 async function handleDispatch() {
   if (!detail.value) return
   if (!dispatchForm.code_ref.trim()) { Message.warning('请输入 git tag'); return }
+  // 下发时目标必填：本次传入优先，否则用工单已有目标，皆空拒绝
+  if (!dispatchForm.target_ids.length && !(detail.value.target_resource_ids || []).length) {
+    Message.warning('请选择执行目标'); return
+  }
   let params: Record<string, unknown> = {}
   if (dispatchForm.paramsText.trim()) {
     try { params = JSON.parse(dispatchForm.paramsText) } catch { Message.warning('执行参数不是合法 JSON'); return }
   }
   dispatchLoading.value = true
   try {
-    await ticketApi.dispatchTicket(detail.value.id, { code_ref: dispatchForm.code_ref.trim(), params })
+    await ticketApi.dispatchTicket(detail.value.id, { code_ref: dispatchForm.code_ref.trim(), params, target_resource_ids: dispatchForm.target_ids })
     Message.success('已下发执行')
     dispatchVisible.value = false
     openDetail(detail.value.id)
@@ -865,15 +857,6 @@ onMounted(() => { fetchData(); fetchUsers() })
 }
 
 .job-bar { display: flex; align-items: center; gap: $spacing-sm; }
-
-.ctx-panel {
-  margin-bottom: $spacing-md; padding: $spacing-sm;
-  background: rgba(22, 119, 255, 0.04); border: 1px solid $border-color-light; border-radius: $radius-md;
-  .ctx-title { font-size: $font-size-xs; font-weight: 600; color: $text-secondary; margin-bottom: 4px; }
-  .ctx-item { display: flex; align-items: center; gap: $spacing-xs; flex-wrap: wrap; padding: 2px 0; }
-  .ctx-name { font-size: $font-size-sm; color: $text-primary; font-weight: 500; }
-  .ctx-text { font-size: $font-size-xs; color: $text-secondary; }
-}
 
 .timeline {
   .comment-line { display: flex; align-items: baseline; gap: $spacing-sm; flex-wrap: wrap; }

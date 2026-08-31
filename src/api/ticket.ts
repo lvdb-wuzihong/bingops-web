@@ -29,6 +29,9 @@ export interface ITicket {
   catalog_category_name: string | null
   group_id: number | null
   group_name: string | null
+  // v18：建单挂靠业务应用作上下文
+  business_app_id: number | null
+  business_app_name: string | null
   difficulty: string | null
   started_at: string | null
   resolved_at: string | null
@@ -130,6 +133,7 @@ export interface ITicketCreate {
   target_resource_ids?: number[]
   catalog_item_id?: number | null
   group_id?: number | null
+  business_app_id?: number | null
   runbook_id?: number | null
   job_params?: Record<string, unknown>
   code_ref?: string | null
@@ -194,6 +198,8 @@ export interface IDispatchRequest {
   code_ref: string
   // 执行参数，按 runbook params_schema 校验
   params?: Record<string, unknown>
+  // 执行目标：本次传入优先，否则用工单已有目标，皆空拒绝
+  target_resource_ids?: number[]
 }
 
 // 运维角色（job:create）事后补齐执行配置并下发；提单人不接触

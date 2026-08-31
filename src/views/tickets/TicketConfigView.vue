@@ -226,20 +226,21 @@
           </a-col>
         </a-row>
         <a-form-item label="一线值班（tier1，自动派单轮转）">
-          <a-select v-model="oncallForm.tier1" multiple allow-search placeholder="选择用户" style="width: 100%">
-            <a-option v-for="u in users" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</a-option>
+          <a-select v-model="oncallForm.tier1" multiple allow-search :disabled="!oncallForm.group_id" :placeholder="oncallForm.group_id ? '从处理组值班池选择' : '先选择处理组'" style="width: 100%">
+            <a-option v-for="u in oncallCandidates" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</a-option>
           </a-select>
         </a-form-item>
         <a-form-item label="二线支持（tier2）">
-          <a-select v-model="oncallForm.tier2" multiple allow-search placeholder="可选" style="width: 100%">
-            <a-option v-for="u in users" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</a-option>
+          <a-select v-model="oncallForm.tier2" multiple allow-search :disabled="!oncallForm.group_id" :placeholder="oncallForm.group_id ? '可选' : '先选择处理组'" style="width: 100%">
+            <a-option v-for="u in oncallCandidates" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</a-option>
           </a-select>
         </a-form-item>
         <a-form-item label="三线支持（tier3）">
-          <a-select v-model="oncallForm.tier3" multiple allow-search placeholder="可选" style="width: 100%">
-            <a-option v-for="u in users" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</a-option>
+          <a-select v-model="oncallForm.tier3" multiple allow-search :disabled="!oncallForm.group_id" :placeholder="oncallForm.group_id ? '可选' : '先选择处理组'" style="width: 100%">
+            <a-option v-for="u in oncallCandidates" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</a-option>
           </a-select>
         </a-form-item>
+        <p v-if="!oncallForm.group_id" class="inherit-text">值班人员池 = 所选处理组的活跃成员，请先选择处理组</p>
         <a-form-item label="备注"><a-input v-model="oncallForm.note" placeholder="可选" /></a-form-item>
       </a-form>
     </a-modal>
@@ -247,12 +248,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconRefresh } from '@arco-design/web-vue/es/icon'
 import * as metaApi from '../../api/ticketMeta'
 import { DIFFICULTY_MAP } from '../../api/ticketMeta'
-import type { ICatalogItem, ITicketGroup, IOncallSchedule } from '../../api/ticketMeta'
+import type { ICatalogItem, ITicketGroup, IOncallSchedule, IAssigneeCandidate } from '../../api/ticketMeta'
 import * as jobApi from '../../api/job'
 import type { IRunbook } from '../../api/job'
 import { getUserList } from '../../api/user'
@@ -471,11 +472,30 @@ const oncallForm = reactive({
   tier1: [] as number[], tier2: [] as number[], tier3: [] as number[], note: '',
 })
 
+// 值班池 = 所选处理组的候选人（组活跃成员，唯一合法值班池），禁止全量用户
+const oncallCandidates = ref<IAssigneeCandidate[]>([])
+
+async function fetchOncallCandidates(gid: number | undefined) {
+  oncallCandidates.value = []
+  if (!gid) return
+  try { oncallCandidates.value = (await metaApi.getGroupCandidates(gid)).data } catch { /* ignore */ }
+}
+
+// 换组时重拉值班池，并过滤掉不在池内的已选人员
+watch(() => oncallForm.group_id, async (gid) => {
+  await fetchOncallCandidates(gid)
+  const ids = new Set(oncallCandidates.value.map(c => c.id))
+  oncallForm.tier1 = oncallForm.tier1.filter(id => ids.has(id))
+  oncallForm.tier2 = oncallForm.tier2.filter(id => ids.has(id))
+  oncallForm.tier3 = oncallForm.tier3.filter(id => ids.has(id))
+})
+
 function openOncallModal(s: IOncallSchedule | null) {
   Object.assign(oncallForm, {
     id: s?.id ?? null, group_id: s?.group_id ?? oncallGroupId.value, oncall_date: s ? new Date(s.oncall_date).toISOString().slice(0, 10) : '',
     tier1: [...(s?.tier1 ?? [])], tier2: [...(s?.tier2 ?? [])], tier3: [...(s?.tier3 ?? [])], note: s?.note ?? '',
   })
+  fetchOncallCandidates(oncallForm.group_id)
   oncallModalVisible.value = true
 }
 
