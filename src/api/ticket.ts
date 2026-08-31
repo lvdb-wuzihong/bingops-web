@@ -206,3 +206,34 @@ export function deleteFreeze(id: number) {
 export function getChangeContext(resourceIds: number[]) {
   return request.get<IChangeContextResource[]>('/api/v1/tickets/change-context', { params: { resource_ids: resourceIds.join(',') } })
 }
+
+// ========== 统计报表 ==========
+
+export interface ITicketStatsQuery {
+  date_from?: string
+  date_to?: string
+  group_id?: number
+}
+
+export interface IAssigneeStat {
+  user_id: number
+  name: string | null
+  assigned: number
+  done: number
+  avg_response_minutes: number | null
+  avg_handle_minutes: number | null
+}
+
+export interface ITicketStats {
+  // 状态分布 + total
+  totals: Record<string, number>
+  // 全局时效：响应=started-created；处理=resolved-started（分钟）
+  time: { avg_response_minutes: number | null; avg_handle_minutes: number | null }
+  by_assignee: IAssigneeStat[]
+  by_category: { category: string; total: number }[]
+  trend: { date: string; created: number; resolved: number }[]
+}
+
+export function getTicketStats(params?: ITicketStatsQuery) {
+  return request.get<ITicketStats>('/api/v1/tickets/stats', { params })
+}

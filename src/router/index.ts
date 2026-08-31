@@ -133,6 +133,12 @@ const routes: RouteRecordRaw[] = [
             component: () => import('../views/tickets/TicketConfigView.vue'),
             meta: { title: '工单配置' },
           },
+          {
+            path: 'stats',
+            name: 'TicketStats',
+            component: () => import('../views/tickets/TicketStatsView.vue'),
+            meta: { title: '统计报表' },
+          },
         ],
       },
       {

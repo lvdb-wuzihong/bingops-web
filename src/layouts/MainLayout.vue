@@ -68,6 +68,7 @@
           <template #title>工单系统</template>
           <a-menu-item key="TicketList">工单列表</a-menu-item>
           <a-menu-item key="TicketConfig">工单配置</a-menu-item>
+          <a-menu-item key="TicketStats">统计报表</a-menu-item>
         </a-sub-menu>
         <a-sub-menu key="System">
           <template #icon><icon-settings /></template>
