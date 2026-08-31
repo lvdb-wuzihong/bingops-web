@@ -187,6 +187,20 @@ export function approveTicket(id: number, action: 'approve' | 'reject', comment?
   return request.post<ITicket>(`/api/v1/tickets/${id}/approve`, { action, comment: comment || null })
 }
 
+// ========== 运维下发 ==========
+
+export interface IDispatchRequest {
+  // git tag，必填
+  code_ref: string
+  // 执行参数，按 runbook params_schema 校验
+  params?: Record<string, unknown>
+}
+
+// 运维角色（job:create）事后补齐执行配置并下发；提单人不接触
+export function dispatchTicket(id: number, data: IDispatchRequest) {
+  return request.post<ITicket>(`/api/v1/tickets/${id}/dispatch`, data)
+}
+
 // ========== 变更封禁窗口 ==========
 
 export function getFreezes(activeOnly = false) {

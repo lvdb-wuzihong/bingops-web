@@ -123,25 +123,9 @@
           <p class="form-hint">处理组按目录默认配置自动派生（事项优先于分类）；处理人按当日值班 tier1 → 组成员轮转自动分派，创建后可在详情人工改派</p>
         </template>
 
-        <!-- 变更工单：runbook 关联 + 变更上下文检查 -->
+        <!-- 变更工单：变更上下文检查（runbook 由目录配置自动携带，运维建单后下发） -->
         <template v-if="!editingId && formData.ticket_type === 'change'">
-          <a-row :gutter="16">
-            <a-col :span="12">
-              <a-form-item field="runbook_id" label="Runbook（携带后走审批）">
-                <a-select v-model="formData.runbook_id" placeholder="可选" allow-clear allow-search>
-                  <a-option v-for="rb in runbookOptions" :key="rb.id" :value="rb.id">{{ rb.name }}（v{{ rb.version }}）</a-option>
-                </a-select>
-              </a-form-item>
-            </a-col>
-            <a-col :span="12">
-              <a-form-item field="code_ref" label="代码版本（git tag）">
-                <a-input v-model="formData.code_ref" placeholder="如：v1.0.0" />
-              </a-form-item>
-            </a-col>
-          </a-row>
-          <a-form-item field="jobParamsText" label="执行参数（JSON，审批通过后随任务下发）">
-            <a-textarea v-model="formData.jobParamsText" placeholder='{"key": "value"}' :auto-size="{ minRows: 2, maxRows: 5 }" />
-          </a-form-item>
+          <p class="form-hint">所选目录事项配置了默认 Runbook 时将自动携带（中高危走审批）；建单后由运维补 git tag 下发执行，提单人无需接触</p>
           <div v-if="changeContext.length" class="ctx-panel">
             <div class="ctx-title">变更上下文检查</div>
             <div v-for="r in changeContext" :key="r.resource_id" class="ctx-item">
@@ -227,6 +211,9 @@
 
         <!-- 操作区 -->
         <a-space wrap class="action-bar">
+          <a-button v-if="canDispatch" size="small" type="primary" @click="openDispatchModal">
+            <template #icon><icon-thunderbolt /></template>下发执行
+          </a-button>
           <a-button
             v-for="act in statusActions"
             :key="act.target"
@@ -302,6 +289,19 @@
       <a-textarea v-model="approvalComment" placeholder="审批意见（可选）" :auto-size="{ minRows: 2, maxRows: 4 }" />
     </a-modal>
 
+    <!-- 下发弹窗（运维事后补齐执行配置，提单人不接触） -->
+    <a-modal v-model:visible="dispatchVisible" title="下发执行" :width="480" :ok-loading="dispatchLoading" @ok="handleDispatch">
+      <p class="form-hint">Runbook 来自目录默认配置（#{{ detail?.runbook_id }}）；填写 git tag 后下发 runner，参数按 params_schema 校验</p>
+      <a-form :model="dispatchForm" layout="vertical">
+        <a-form-item label="代码版本（git tag）" required>
+          <a-input v-model="dispatchForm.code_ref" placeholder="如：v1.0.0" />
+        </a-form-item>
+        <a-form-item label="执行参数（JSON，可选）">
+          <a-textarea v-model="dispatchForm.paramsText" placeholder='{"key": "value"}' :auto-size="{ minRows: 2, maxRows: 5 }" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
     <!-- 封禁窗口抽屉 -->
     <a-drawer v-model:visible="freezeVisible" title="变更封禁窗口" :width="620" unmount-on-close>
       <div class="freeze-head">
@@ -348,19 +348,18 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { IconPlus, IconEdit, IconDelete, IconUser, IconSafe } from '@arco-design/web-vue/es/icon'
+import { IconPlus, IconEdit, IconDelete, IconUser, IconSafe, IconThunderbolt } from '@arco-design/web-vue/es/icon'
 import * as ticketApi from '../../api/ticket'
 import type { ITicket, ITicketDetail, ITicketComment, IFreeze, IChangeContextResource } from '../../api/ticket'
 import * as metaApi from '../../api/ticketMeta'
 import { DIFFICULTY_MAP } from '../../api/ticketMeta'
 import type { ICatalogItem, ITicketGroup, IAssigneeCandidate } from '../../api/ticketMeta'
-import * as jobApi from '../../api/job'
 import { executionStatus } from '../../api/job'
-import type { IRunbook } from '../../api/job'
 import { getResourceOptions, getResourceDetail } from '../../api/cmdb'
 import type { IResourceOption } from '../../api/cmdb'
 import { getUserList } from '../../api/user'
 import type { IUser } from '../../types/user'
+import { useUserStore } from '../../stores/user'
 
 // ========== 字典 ==========
 const statusMap: Record<string, { text: string; color: string }> = {
@@ -455,7 +454,6 @@ const formVisible = ref(false)
 const formLoading = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref()
-const runbookOptions = ref<IRunbook[]>([])
 const changeContext = ref<IChangeContextResource[]>([])
 const groupOptions = ref<ITicketGroup[]>([])
 const catalogItems = ref<ICatalogItem[]>([])
@@ -508,17 +506,15 @@ const formData = reactive({
   title: '', ticket_type: 'general', priority: 'medium',
   target_resource_ids: [] as number[],
   catalog_item_id: undefined as number | undefined,
-  runbook_id: undefined as number | undefined, code_ref: '', jobParamsText: '',
   description: '',
 })
 
-// 选择目录事项后预填默认类型/默认 runbook（处理组/处理人由后端自动派生，不在表单出现）
+// 选择目录事项后预填默认类型（runbook 由后端从目录 default_runbook_id 携带，不在表单出现）
 watch(() => formData.catalog_item_id, (cid) => {
   if (!cid) return
   const item = catalogItems.value.find(i => i.id === cid)
   if (!item) return
   formData.ticket_type = item.default_type
-  if (item.default_runbook_id && !formData.runbook_id) formData.runbook_id = item.default_runbook_id
 })
 
 // 表单目录选项：仅默认类型与当前工单类型匹配的事项，避免跨类型误选
@@ -542,18 +538,14 @@ const formRules = computed(() => ({
     : [],
 }))
 
-// 条件必填：目录事项绑 runbook / 变更工单手动关联 runbook（与后端 _validate_runbook_intent 同规则）
+// 条件必填：目录事项绑了 runbook 时目标必填（与后端 _validate_runbook_intent 同规则）
 const targetRequired = computed(() => {
   if (formData.catalog_item_id) {
     const item = catalogItems.value.find(i => i.id === formData.catalog_item_id)
     if (item?.default_runbook_id) return true
   }
-  return formData.ticket_type === 'change' && !!formData.runbook_id
+  return false
 })
-
-async function fetchRunbookOptions() {
-  try { const res = await jobApi.getRunbooks({ page: 1, page_size: 100 }); runbookOptions.value = res.data.items } catch { /* ignore */ }
-}
 
 // 变更工单选定执行目标后拉取变更上下文（封禁/占用/活跃工单/近期变更）
 watch(() => formData.target_resource_ids.join(','), async (key) => {
@@ -567,10 +559,9 @@ function handleAdd() {
   Object.assign(formData, {
     title: '', ticket_type: 'general', priority: 'medium', target_resource_ids: [],
     catalog_item_id: undefined,
-    runbook_id: undefined, code_ref: '', jobParamsText: '', description: '',
+    description: '',
   })
   changeContext.value = []
-  fetchRunbookOptions()
   fetchMetaOptions()
   searchTargetResources('')
   formVisible.value = true
@@ -597,17 +588,10 @@ async function handleSubmit() {
         title: formData.title, priority: formData.priority, description: formData.description || null,
       })
     } else {
-      let jobParams: Record<string, unknown> = {}
-      if (formData.jobParamsText.trim()) {
-        try { jobParams = JSON.parse(formData.jobParamsText) } catch { Message.warning('执行参数不是合法 JSON'); formLoading.value = false; return }
-      }
       await ticketApi.createTicket({
         title: formData.title, ticket_type: formData.ticket_type, priority: formData.priority,
         target_resource_ids: formData.target_resource_ids,
         catalog_item_id: formData.catalog_item_id ?? null,
-        runbook_id: formData.ticket_type === 'change' ? (formData.runbook_id ?? null) : null,
-        code_ref: formData.ticket_type === 'change' ? (formData.code_ref || null) : null,
-        job_params: formData.ticket_type === 'change' ? jobParams : undefined,
         description: formData.description || null,
       })
     }
@@ -759,6 +743,39 @@ async function handleApproval() {
     openDetail(detail.value.id)
     fetchData()
   } catch { /* 拦截器已提示（如创建人自审） */ } finally { approvalLoading.value = false }
+}
+
+// ========== 运维下发（job:create 权限，提单人不接触 runbook） ==========
+const userStore = useUserStore()
+const dispatchVisible = ref(false)
+const dispatchLoading = ref(false)
+const dispatchForm = reactive({ code_ref: '', paramsText: '' })
+
+// runbook 由目录配置携带；工单 open 且当前用户有 job:create 时才显示下发入口
+const canDispatch = computed(() =>
+  !!detail.value?.runbook_id && detail.value.status === 'open' && userStore.hasPermission('job:create'),
+)
+
+function openDispatchModal() {
+  Object.assign(dispatchForm, { code_ref: detail.value?.code_ref || '', paramsText: '' })
+  dispatchVisible.value = true
+}
+
+async function handleDispatch() {
+  if (!detail.value) return
+  if (!dispatchForm.code_ref.trim()) { Message.warning('请输入 git tag'); return }
+  let params: Record<string, unknown> = {}
+  if (dispatchForm.paramsText.trim()) {
+    try { params = JSON.parse(dispatchForm.paramsText) } catch { Message.warning('执行参数不是合法 JSON'); return }
+  }
+  dispatchLoading.value = true
+  try {
+    await ticketApi.dispatchTicket(detail.value.id, { code_ref: dispatchForm.code_ref.trim(), params })
+    Message.success('已下发执行')
+    dispatchVisible.value = false
+    openDetail(detail.value.id)
+    fetchData()
+  } catch { /* 拦截器已提示（无 runbook/非 open/活跃执行/参数不合 schema） */ } finally { dispatchLoading.value = false }
 }
 
 // ========== 评论 ==========
