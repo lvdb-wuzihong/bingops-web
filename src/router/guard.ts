@@ -9,9 +9,14 @@ export function setupRouterGuard(router: Router) {
 
     // 已登录
     if (userStore.isLoggedIn) {
-      // 访问登录页 -> 跳转首页
+      // 访问登录页 -> 回跳 redirect（与登录页 safeRedirect 同规则）或首页
       if (to.path === '/auth/login') {
-        next('/dashboard')
+        const redirect = to.query.redirect
+        if (typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')) {
+          next(redirect)
+        } else {
+          next('/dashboard')
+        }
         return
       }
 
@@ -21,7 +26,8 @@ export function setupRouterGuard(router: Router) {
           await userStore.fetchUserInfo()
           next({ ...to, replace: true })
         } catch {
-          next('/auth/login')
+          // 用户信息拉取失败（token 已在 store 中清理），同样保留回跳路径
+          next(`/auth/login?redirect=${encodeURIComponent(to.fullPath)}`)
         }
         return
       }

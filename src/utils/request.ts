@@ -109,7 +109,14 @@ service.interceptors.response.use(
 function handleLogout() {
   localStorage.removeItem('access_token')
   localStorage.removeItem('refresh_token')
-  window.location.href = '/auth/login'
+  // 保留退出前完整路径，重新登录后回跳；登录页自身发起的请求 401 不再拼 redirect（防死循环）
+  const { pathname, search, hash } = window.location
+  if (pathname.startsWith('/auth/login')) {
+    window.location.href = '/auth/login'
+    return
+  }
+  const redirect = encodeURIComponent(pathname + search + hash)
+  window.location.href = `/auth/login?redirect=${redirect}`
 }
 
 // 封装请求方法

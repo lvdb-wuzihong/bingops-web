@@ -76,13 +76,14 @@
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { IconUser, IconLock, IconLink } from '@arco-design/web-vue/es/icon'
 import { useUserStore } from '../../stores/user'
 import { getFeishuLoginUrl } from '../../api/auth'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 const loading = ref(false)
 
@@ -96,12 +97,19 @@ const rules = {
   password: [{ required: true, message: '请输入密码' }],
 }
 
+// 站内回跳地址：仅接受以单个 / 开头的路径，防开放重定向（//host 与 /\host 是协议相对 URL）
+function safeRedirect(): string {
+  const r = route.query.redirect
+  if (typeof r === 'string' && r.startsWith('/') && !r.startsWith('//') && !r.startsWith('/\\')) return r
+  return '/dashboard'
+}
+
 async function handleLogin() {
   loading.value = true
   try {
     await userStore.login(form.username, form.password)
     Message.success('登录成功')
-    router.push('/dashboard')
+    router.push(safeRedirect())
   } catch {
     // 错误已在拦截器中处理
   } finally {
