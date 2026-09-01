@@ -20,19 +20,6 @@
           <a-select v-model="filters.catalog_item_id" placeholder="服务目录" allow-clear show-search style="width: 180px" @change="handleSearch">
             <a-option v-for="c in catalogLeafOptions" :key="c.id" :value="c.id">{{ c.label }}</a-option>
           </a-select>
-          <a-select
-            v-model="filters.target_resource_id"
-            placeholder="目标资源"
-            allow-clear
-            allow-search
-            :filter-option="false"
-            :loading="filterResSearching"
-            style="width: 180px"
-            @search="searchFilterResources"
-            @change="handleSearch"
-          >
-            <a-option v-for="r in filterResourceOptions" :key="r.id" :value="r.id">{{ r.name }}（{{ r.model_code || '-' }}）</a-option>
-          </a-select>
           <a-button @click="openFreezeDrawer">
             <template #icon><icon-safe /></template>封禁窗口
           </a-button>
@@ -110,8 +97,7 @@
               <a-option v-for="a in appOptions" :key="a.id" :value="a.id">{{ a.name }}（{{ a.app_code }}）</a-option>
             </a-select>
           </a-form-item>
-          <p class="form-hint">处理组按目录默认配置自动派生（事项优先于分类）；处理人按当日值班 tier1 → 组成员轮转自动分派，创建后可在详情人工改派</p>
-          <p v-if="catalogHasRunbook" class="form-hint">该事项配置了默认 Runbook，将自动携带（中高危走审批）；建单后由运维补 git tag 与执行目标并下发，提单人无需选资源</p>
+          <p class="form-hint">处理组按目录默认配置自动派生（事项优先于分类）；处理人按当日值班 tier1 → 组成员轮转自动分派，创建后可在详情人工改派；风险等级取事项默认风险快照（中高危走审批）</p>
         </template>
 
         <a-form-item field="description" label="描述">
@@ -188,7 +174,7 @@
         <!-- 操作区 -->
         <a-space wrap class="action-bar">
           <a-button v-if="canDispatch" size="small" type="primary" @click="openDispatchModal">
-            <template #icon><icon-thunderbolt /></template>下发执行
+            <template #icon><icon-thunderbolt /></template>选 Runbook 并下发
           </a-button>
           <a-button
             v-for="act in statusActions"
@@ -265,13 +251,49 @@
       <a-textarea v-model="approvalComment" placeholder="审批意见（可选）" :auto-size="{ minRows: 2, maxRows: 4 }" />
     </a-modal>
 
-    <!-- 下发弹窗（运维事后补齐执行配置，提单人不接触） -->
-    <a-modal v-model:visible="dispatchVisible" title="下发执行" :width="480" :ok-loading="dispatchLoading" @ok="handleDispatch">
-      <p class="form-hint">Runbook 来自目录默认配置（#{{ detail?.runbook_id }}）；填写 git tag 后下发 runner，参数按 params_schema 校验</p>
+    <!-- 下发弹窗（v20：运维选 runbook + git tag + 目标；参数按 params_schema 动态渲染） -->
+    <a-modal v-model:visible="dispatchVisible" title="下发执行" :width="520" :ok-loading="dispatchLoading" @ok="handleDispatch">
+      <p class="form-hint">runbook 是执行工具而非事项属性，由运维下发时选择；参数缺省由后端回填，表单只收集实际填写值</p>
       <a-form :model="dispatchForm" layout="vertical">
+        <a-form-item label="Runbook" required>
+          <a-select v-model="dispatchForm.runbook_id" placeholder="选择本次执行的 Runbook" allow-search>
+            <a-option v-for="rb in runbookOptions" :key="rb.id" :value="rb.id" :disabled="!rb.is_active">
+              {{ rb.name }}（v{{ rb.version }} · {{ rb.risk_level }}）
+            </a-option>
+          </a-select>
+        </a-form-item>
         <a-form-item label="代码版本（git tag）" required>
           <a-input v-model="dispatchForm.code_ref" placeholder="如：v1.0.0" />
         </a-form-item>
+        <template v-for="(spec, key) in dispatchParamsSchema" :key="key">
+          <a-form-item :label="spec.description || String(key)" :required="!!spec.required">
+            <a-select
+              v-if="Array.isArray(spec.enum)"
+              :model-value="(paramValue(String(key)) as string | number | boolean | undefined)"
+              placeholder="请选择"
+              allow-clear
+              @update:model-value="(v: unknown) => setParamValue(String(key), v)"
+            >
+              <a-option v-for="e in spec.enum" :key="String(e)" :value="e">{{ String(e) }}</a-option>
+            </a-select>
+            <a-switch
+              v-else-if="spec.type === 'boolean'"
+              :model-value="Boolean(paramValue(String(key)))"
+              @update:model-value="(v: string | number | boolean) => setParamValue(String(key), Boolean(v))"
+            />
+            <a-input-number
+              v-else-if="spec.type === 'number'"
+              :model-value="(paramValue(String(key)) as number | undefined)"
+              style="width: 100%"
+              @update:model-value="(v: number | undefined) => setParamValue(String(key), v)"
+            />
+            <a-input
+              v-else
+              :model-value="(paramValue(String(key)) as string | undefined)"
+              @update:model-value="(v: string) => setParamValue(String(key), v)"
+            />
+          </a-form-item>
+        </template>
         <a-form-item label="执行目标（必填：本次优先，否则用工单已有目标）">
           <a-select
             v-model="dispatchForm.target_ids"
@@ -287,9 +309,6 @@
               {{ r.name }}（{{ r.model_code || '-' }} / {{ r.region || '-' }}）
             </a-option>
           </a-select>
-        </a-form-item>
-        <a-form-item label="执行参数（JSON，可选）">
-          <a-textarea v-model="dispatchForm.paramsText" placeholder='{"key": "value"}' :auto-size="{ minRows: 2, maxRows: 5 }" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -347,6 +366,8 @@ import * as metaApi from '../../api/ticketMeta'
 import { DIFFICULTY_MAP } from '../../api/ticketMeta'
 import type { ICatalogItem, ITicketGroup, IAssigneeCandidate } from '../../api/ticketMeta'
 import { executionStatus } from '../../api/job'
+import * as jobApi from '../../api/job'
+import type { IRunbook } from '../../api/job'
 import { getResourceOptions, getResourceDetail } from '../../api/cmdb'
 import type { IResourceOption } from '../../api/cmdb'
 import { getUserList } from '../../api/user'
@@ -398,7 +419,7 @@ function formatTime(t: string | null) {
 // ========== 列表 ==========
 const loading = ref(false)
 const tickets = ref<ITicket[]>([])
-const filters = reactive({ keyword: '', status: undefined as string | undefined, ticket_type: undefined as string | undefined, priority: undefined as string | undefined, group_id: undefined as number | undefined, catalog_item_id: undefined as number | undefined, target_resource_id: undefined as number | undefined })
+const filters = reactive({ keyword: '', status: undefined as string | undefined, ticket_type: undefined as string | undefined, priority: undefined as string | undefined, group_id: undefined as number | undefined, catalog_item_id: undefined as number | undefined })
 const pagination = reactive({ current: 1, pageSize: 20, total: 0, showTotal: true, showPageSize: true })
 
 const columns = [
@@ -424,7 +445,6 @@ async function fetchData() {
       priority: filters.priority,
       group_id: filters.group_id,
       catalog_item_id: filters.catalog_item_id,
-      target_resource_id: filters.target_resource_id,
       page: pagination.current,
       page_size: pagination.pageSize,
     })
@@ -484,22 +504,6 @@ async function searchTargetResources(keyword: string) {
   } catch { /* ignore */ } finally { targetSearching.value = false }
 }
 
-// 筛选栏目标资源过滤选择器
-const filterResourceOptions = ref<IResourceOption[]>([])
-const filterResSearching = ref(false)
-
-async function searchFilterResources(keyword: string) {
-  filterResSearching.value = true
-  try {
-    const res = await getResourceOptions({ keyword: keyword || undefined, limit: 20 })
-    const merged = [...res.data]
-    for (const r of filterResourceOptions.value) {
-      if (filters.target_resource_id === r.id && !merged.some(m => m.id === r.id)) merged.push(r)
-    }
-    filterResourceOptions.value = merged
-  } catch { /* ignore */ } finally { filterResSearching.value = false }
-}
-
 const formData = reactive({
   title: '', ticket_type: 'general', priority: 'medium',
   catalog_item_id: undefined as number | undefined,
@@ -507,7 +511,7 @@ const formData = reactive({
   description: '',
 })
 
-// 选择目录事项后预填默认类型（runbook 由后端从目录 default_runbook_id 携带，不在表单出现）
+// 选择目录事项后预填默认类型（runbook 不预绑，下发时由运维选择）
 watch(() => formData.catalog_item_id, (cid) => {
   if (!cid) return
   const item = catalogItems.value.find(i => i.id === cid)
@@ -530,12 +534,6 @@ watch(() => formData.ticket_type, (t) => {
   if (item && item.default_type !== t) formData.catalog_item_id = undefined
 })
 const formRules = { title: [{ required: true, message: '请输入标题' }] }
-
-// 所选目录事项是否带默认 Runbook（驱动提示文案）
-const catalogHasRunbook = computed(() => {
-  if (!formData.catalog_item_id) return false
-  return !!catalogItems.value.find(i => i.id === formData.catalog_item_id)?.default_runbook_id
-})
 
 function handleAdd() {
   editingId.value = null
@@ -727,42 +725,87 @@ async function handleApproval() {
   } catch { /* 拦截器已提示（如创建人自审） */ } finally { approvalLoading.value = false }
 }
 
-// ========== 运维下发（job:create 权限，提单人不接触 runbook） ==========
+// ========== 运维下发（v20：job:create 权限，下发时选 runbook） ==========
 const userStore = useUserStore()
 const dispatchVisible = ref(false)
 const dispatchLoading = ref(false)
-const dispatchForm = reactive({ code_ref: '', paramsText: '', target_ids: [] as number[] })
+const dispatchForm = reactive({ runbook_id: undefined as number | undefined, code_ref: '', target_ids: [] as number[] })
+const runbookOptions = ref<IRunbook[]>([])
 
-// runbook 由目录配置携带；工单 open 且当前用户有 job:create 时才显示下发入口
+// runbook params_schema 动态表单值（只收集用户实际填写，default 后端回填）
+interface IParamSpec {
+  type?: string
+  required?: boolean
+  default?: string | number | boolean
+  enum?: (string | number)[]
+  description?: string
+}
+const paramValues = ref<Record<string, unknown>>({})
+
+function paramValue(key: string) { return paramValues.value[key] }
+function setParamValue(key: string, v: unknown) { paramValues.value[key] = v }
+
+const dispatchParamsSchema = computed<Record<string, IParamSpec>>(() => {
+  const rb = runbookOptions.value.find(r => r.id === dispatchForm.runbook_id)
+  const out: Record<string, IParamSpec> = {}
+  for (const [k, v] of Object.entries((rb?.params_schema || {}) as Record<string, unknown>)) {
+    if (v && typeof v === 'object') out[k] = v as IParamSpec
+  }
+  return out
+})
+
+// 切换 runbook 时按 default 初始化参数表单
+watch(() => dispatchForm.runbook_id, () => {
+  const vals: Record<string, unknown> = {}
+  for (const [k, spec] of Object.entries(dispatchParamsSchema.value)) {
+    if (spec.type === 'boolean') vals[k] = typeof spec.default === 'boolean' ? spec.default : false
+    else if (spec.default !== undefined) vals[k] = spec.default
+  }
+  paramValues.value = vals
+})
+
+// v20：runbook 下发时选择，入口条件 = 工单 open 且有 job:create 权限
 const canDispatch = computed(() =>
-  !!detail.value?.runbook_id && detail.value.status === 'open' && userStore.hasPermission('job:create'),
+  detail.value?.status === 'open' && userStore.hasPermission('job:create'),
 )
 
-function openDispatchModal() {
+async function openDispatchModal() {
   Object.assign(dispatchForm, {
+    runbook_id: undefined,
     code_ref: detail.value?.code_ref || '',
-    paramsText: '',
     // 预填工单已有目标（本次传入优先，否则用已有）
     target_ids: [...(detail.value?.target_resource_ids ?? [])],
   })
+  paramValues.value = {}
+  try { runbookOptions.value = (await jobApi.getRunbooks({ page: 1, page_size: 100 })).data.items } catch { /* ignore */ }
   searchTargetResources('')
   dispatchVisible.value = true
 }
 
 async function handleDispatch() {
   if (!detail.value) return
+  if (!dispatchForm.runbook_id) { Message.warning('请选择 Runbook'); return }
   if (!dispatchForm.code_ref.trim()) { Message.warning('请输入 git tag'); return }
   // 下发时目标必填：本次传入优先，否则用工单已有目标，皆空拒绝
   if (!dispatchForm.target_ids.length && !(detail.value.target_resource_ids || []).length) {
     Message.warning('请选择执行目标'); return
   }
-  let params: Record<string, unknown> = {}
-  if (dispatchForm.paramsText.trim()) {
-    try { params = JSON.parse(dispatchForm.paramsText) } catch { Message.warning('执行参数不是合法 JSON'); return }
+  // 动态参数：只发送实际填写值，required 前端先校验
+  const params: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(paramValues.value)) {
+    if (v !== undefined && v !== null && v !== '') params[k] = v
+  }
+  for (const [k, spec] of Object.entries(dispatchParamsSchema.value)) {
+    if (spec.required && params[k] === undefined) { Message.warning(`请填写参数：${spec.description || k}`); return }
   }
   dispatchLoading.value = true
   try {
-    await ticketApi.dispatchTicket(detail.value.id, { code_ref: dispatchForm.code_ref.trim(), params, target_resource_ids: dispatchForm.target_ids })
+    await ticketApi.dispatchTicket(detail.value.id, {
+      runbook_id: dispatchForm.runbook_id,
+      code_ref: dispatchForm.code_ref.trim(),
+      params,
+      target_resource_ids: dispatchForm.target_ids,
+    })
     Message.success('已下发执行')
     dispatchVisible.value = false
     openDetail(detail.value.id)

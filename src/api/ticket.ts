@@ -134,9 +134,6 @@ export interface ITicketCreate {
   catalog_item_id?: number | null
   group_id?: number | null
   business_app_id?: number | null
-  runbook_id?: number | null
-  job_params?: Record<string, unknown>
-  code_ref?: string | null
 }
 
 export interface ITicketUpdate {
@@ -194,9 +191,11 @@ export function approveTicket(id: number, action: 'approve' | 'reject', comment?
 // ========== 运维下发 ==========
 
 export interface IDispatchRequest {
+  // v20：runbook 由运维下发时选择（同一事项可对应多个 runbook）
+  runbook_id: number
   // git tag，必填
   code_ref: string
-  // 执行参数，按 runbook params_schema 校验
+  // 执行参数，按 runbook params_schema 校验（default 后端回填）
   params?: Record<string, unknown>
   // 执行目标：本次传入优先，否则用工单已有目标，皆空拒绝
   target_resource_ids?: number[]

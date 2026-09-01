@@ -173,11 +173,6 @@
               </a-form-item>
             </a-col>
           </a-row>
-          <a-form-item label="默认 Runbook">
-            <a-select v-model="catalogForm.default_runbook_id" placeholder="可选" allow-clear>
-              <a-option v-for="rb in runbookOptions" :key="rb.id" :value="rb.id">{{ rb.name }}</a-option>
-            </a-select>
-          </a-form-item>
         </template>
         <a-row :gutter="16">
           <a-col :span="12">
@@ -254,8 +249,6 @@ import { IconPlus, IconRefresh } from '@arco-design/web-vue/es/icon'
 import * as metaApi from '../../api/ticketMeta'
 import { DIFFICULTY_MAP } from '../../api/ticketMeta'
 import type { ICatalogItem, ITicketGroup, IOncallSchedule, IAssigneeCandidate } from '../../api/ticketMeta'
-import * as jobApi from '../../api/job'
-import type { IRunbook } from '../../api/job'
 import { getUserList } from '../../api/user'
 import type { IUser } from '../../types/user'
 
@@ -318,7 +311,7 @@ const catalogModalTitle = computed(() => {
 const catalogForm = reactive({
   id: null as number | null, name: '', parent_id: undefined as number | undefined,
   difficulty: 'simple', default_risk: 'low', default_type: 'request',
-  default_runbook_id: undefined as number | undefined, default_group_id: undefined as number | undefined,
+  default_group_id: undefined as number | undefined,
   sort_order: 0, description: '',
 })
 
@@ -331,7 +324,7 @@ function openCatalogCreate(mode: 'category' | 'item', parentId?: number) {
   catalogMode.value = mode
   Object.assign(catalogForm, {
     id: null, name: '', parent_id: parentId, difficulty: 'simple', default_risk: 'low',
-    default_type: 'request', default_runbook_id: undefined, default_group_id: undefined, sort_order: 0, description: '',
+    default_type: 'request', default_group_id: undefined, sort_order: 0, description: '',
   })
   catalogModalVisible.value = true
 }
@@ -341,7 +334,7 @@ function openCatalogEdit(item: ICatalogItem) {
   Object.assign(catalogForm, {
     id: item.id, name: item.name, parent_id: item.parent_id ?? undefined, difficulty: item.difficulty,
     default_risk: item.default_risk, default_type: item.default_type,
-    default_runbook_id: item.default_runbook_id ?? undefined, default_group_id: item.default_group_id ?? undefined,
+    default_group_id: item.default_group_id ?? undefined,
     sort_order: item.sort_order, description: item.description || '',
   })
   catalogModalVisible.value = true
@@ -360,7 +353,6 @@ async function handleSaveCatalog() {
           difficulty: catalogForm.difficulty,
           default_risk: catalogForm.default_risk,
           default_type: catalogForm.default_type,
-          default_runbook_id: catalogForm.default_runbook_id ?? null,
         } : {}),
         default_group_id: catalogForm.default_group_id ?? null,
         sort_order: catalogForm.sort_order,
@@ -375,7 +367,6 @@ async function handleSaveCatalog() {
         name: catalogForm.name, parent_id: catalogForm.parent_id as number,
         description: catalogForm.description || null, difficulty: catalogForm.difficulty,
         default_risk: catalogForm.default_risk, default_type: catalogForm.default_type,
-        default_runbook_id: catalogForm.default_runbook_id ?? null,
         default_group_id: catalogForm.default_group_id ?? null, sort_order: catalogForm.sort_order,
       })
     }
@@ -524,14 +515,11 @@ async function handleDeleteOncall(id: number) {
 }
 
 // ========== 初始化 ==========
-const runbookOptions = ref<IRunbook[]>([])
-
 onMounted(() => {
   fetchUsers()
   fetchCatalog()
   fetchGroups()
   fetchOncall()
-  jobApi.getRunbooks({ page: 1, page_size: 100 }).then(res => { runbookOptions.value = res.data.items }).catch(() => { /* ignore */ })
 })
 </script>
 
