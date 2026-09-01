@@ -73,7 +73,8 @@ export interface IAppResource {
   name: string
   provider: string
   model_code: string
-  status: string
+  // NULL = 无生命周期状态
+  status: string | null
   // env 由后端从资源 env/k8s:env 标签实时解析，未打标签为 null
   env: string | null
   region: string | null

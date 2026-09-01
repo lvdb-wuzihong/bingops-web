@@ -100,7 +100,7 @@
           <span v-else>-</span>
         </template>
         <template #provider="{ record }">{{ providerMap[record.provider] || record.provider }}</template>
-        <template #status="{ record }">{{ statusMap[record.status] || record.status }}</template>
+        <template #status="{ record }">{{ record.status ? (statusMap[record.status] || record.status) : '无状态' }}</template>
         <template #source="{ record }">
           <a-tag size="small" :color="record.source === 'tag' ? 'green' : 'blue'">{{ record.source === 'tag' ? '标签归集' : '手动绑定' }}</a-tag>
         </template>

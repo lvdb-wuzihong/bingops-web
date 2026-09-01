@@ -120,7 +120,7 @@
             </template>
             <template #status="{ record }">
               <div class="status-cell">
-                <span class="status-dot" :class="`status-${record.status}`"></span>
+                <span class="status-dot" :class="record.status ? `status-${record.status}` : 'status-none'"></span>
                 {{ statusText(record.status) }}
               </div>
             </template>
@@ -408,7 +408,7 @@ const providerMap: Record<string, string> = { aliyun: '阿里云', aws: 'AWS', g
 const statusMap: Record<string, string> = { running: '运行中', ready: '就绪', not_ready: '未就绪', stopped: '已停止', pending: '启动中', failed: '异常', succeeded: '已完成', maintenance: '维护中', unknown: '未知' }
 
 function providerText(p: string) { return providerMap[p] || p }
-function statusText(s: string) { return statusMap[s] || s }
+function statusText(s: string | null | undefined) { return s ? (statusMap[s] || s) : '无状态' }
 function sourceText(s: string) { return s === 'discovery' ? '自动发现' : s === 'kafka' ? 'Kafka' : '手动录入' }
 function sourceColor(s: string) { return s === 'discovery' ? 'green' : s === 'kafka' ? 'purple' : 'orange' }
 function formatTime(t: string) { return new Date(t).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }
@@ -662,6 +662,8 @@ onMounted(async () => {
   &.status-pending { background: $color-warning; box-shadow: 0 0 6px rgba(250,173,20,0.4); }
   &.status-maintenance { background: $color-warning; box-shadow: 0 0 6px rgba(250,173,20,0.4); }
   &.status-unknown { background: $text-disabled; }
+  // 无生命周期状态：空心虚线圈
+  &.status-none { background: transparent; border: 1px dashed $text-disabled; }
 }
 
 .view-indicator {

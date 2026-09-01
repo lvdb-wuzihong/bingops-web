@@ -11,7 +11,8 @@ export interface ICmdbResource {
   name: string
   region: string | null
   zone: string | null
-  status: string
+  // NULL = 该资源类型无生命周期状态；unknown = 有状态概念但识别失败
+  status: string | null
   fields: Record<string, unknown>
   resource_version: string | null
   synced_at: string | null
@@ -78,7 +79,8 @@ export interface IResourceOption {
   model_code: string | null
   provider: string | null
   region: string | null
-  status: string
+  // NULL = 该资源类型无生命周期状态；unknown = 有状态概念但识别失败
+  status: string | null
 }
 
 export function getResourceOptions(params?: { keyword?: string; model_id?: number; limit?: number }) {

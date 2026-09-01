@@ -20,7 +20,7 @@
             <a-descriptions-item label="Provider ID"><span class="mono-text">{{ resource.provider_id }}</span></a-descriptions-item>
             <a-descriptions-item label="所属模型"><a-tag size="small" color="arcoblue">{{ modelName || resource.model_name || '-' }}</a-tag></a-descriptions-item>
             <a-descriptions-item label="状态">
-              <div class="status-cell"><span class="status-dot" :class="`status-${resource.status}`"></span>{{ statusText }}</div>
+              <div class="status-cell"><span class="status-dot" :class="resource.status ? `status-${resource.status}` : 'status-none'"></span>{{ statusText }}</div>
             </a-descriptions-item>
             <a-descriptions-item label="云厂商"><a-tag size="small" color="arcoblue">{{ providerLabel }}</a-tag></a-descriptions-item>
             <a-descriptions-item label="云账号">{{ resource.cloud_account }}</a-descriptions-item>
@@ -159,7 +159,11 @@ const statusMap: Record<string, string> = { running: '运行中', ready: '就绪
 const sourceMap: Record<string, string> = { discovery: '自动发现', kafka: 'Kafka', manual: '手动录入' }
 
 const providerLabel = computed(() => resource.value?.provider ? (providerMap[resource.value.provider] || resource.value.provider) : '-')
-const statusText = computed(() => resource.value ? (statusMap[resource.value.status] || resource.value.status) : '')
+const statusText = computed(() => {
+  if (!resource.value) return ''
+  const s = resource.value.status
+  return s ? (statusMap[s] || s) : '无状态'
+})
 const sourceText = computed(() => resource.value ? (sourceMap[resource.value.source] || resource.value.source) : '')
 const sourceColor = computed(() => {
   if (!resource.value) return 'gray'
@@ -236,7 +240,7 @@ const editFieldDefs = computed(() => modelFields.value.filter(f => !f.is_builtin
 
 function handleEdit() {
   if (!resource.value) return
-  formData.value = { name: resource.value.name, status: resource.value.status, region: resource.value.region || '', zone: resource.value.zone || '' }
+  formData.value = { name: resource.value.name, status: resource.value.status ?? '', region: resource.value.region || '', zone: resource.value.zone || '' }
   Object.keys(dynamicFields).forEach(k => delete dynamicFields[k])
   editFieldDefs.value.forEach(f => {
     const val = resource.value!.fields?.[f.code]
@@ -312,6 +316,8 @@ onMounted(() => {
   &.status-pending { background: $color-warning; box-shadow: 0 0 6px rgba(250,173,20,0.4); }
   &.status-maintenance { background: $color-warning; box-shadow: 0 0 6px rgba(250,173,20,0.4); }
   &.status-unknown { background: $text-disabled; }
+  // 无生命周期状态：空心虚线圈
+  &.status-none { background: transparent; border: 1px dashed $text-disabled; }
 }
 
 .field-group-title {
