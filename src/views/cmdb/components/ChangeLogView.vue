@@ -21,7 +21,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { getChangeLogs } from '../../../api/changeLog'
 import type { IChangeLog } from '../../../api/changeLog'
 
@@ -48,6 +48,9 @@ async function fetchLogs() {
 }
 
 onMounted(() => fetchLogs())
+
+// 点击关联资源跳转（路由参数变化组件复用）时重拉
+watch(() => props.resourceId, () => fetchLogs())
 </script>
 
 <style scoped lang="scss">

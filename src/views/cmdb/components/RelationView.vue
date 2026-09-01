@@ -422,6 +422,15 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
 })
 
+// 父页路由参数变化（点击关联资源跳转，组件复用）：重置名称缓存并重拉
+watch(() => props.resourceId, () => {
+  resourceNameMap.value = {}
+  fetchTopology()
+  fetchParents()
+  fetchChildren()
+  fetchRelations()
+})
+
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   chartInstance?.dispose()

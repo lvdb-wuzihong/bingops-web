@@ -128,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { IconLeft, IconEdit } from '@arco-design/web-vue/es/icon'
@@ -144,7 +144,7 @@ import type { IModelField } from '../../types/model'
 
 const router = useRouter()
 const route = useRoute()
-const resourceId = Number(route.params.id)
+const resourceId = computed(() => Number(route.params.id))
 
 const loading = ref(false)
 const resource = ref<ICmdbResource | null>(null)
@@ -205,7 +205,7 @@ function formatTime(t: string) {
 async function fetchDetail() {
   loading.value = true
   try {
-    const res = await getResourceDetail(resourceId)
+    const res = await getResourceDetail(resourceId.value)
     resource.value = res.data
     // fetch model fields
     if (res.data.model_id) {
@@ -221,7 +221,7 @@ async function fetchDetail() {
     }
     // 归属应用（应用-资源关联）
     try {
-      const appRes = await getResourceApps(resourceId)
+      const appRes = await getResourceApps(resourceId.value)
       resourceApps.value = appRes.data
     } catch { /* ignore */ }
   } catch { Message.error('获取资源详情失败') } finally { loading.value = false }
@@ -273,7 +273,7 @@ async function handleFormSubmit() {
   formLoading.value = true
   try {
     const data: IResourceUpdate = { name: formData.value.name, status: formData.value.status, region: formData.value.region || undefined, zone: formData.value.zone || undefined, fields }
-    await updateResource(resourceId, data)
+    await updateResource(resourceId.value, data)
     Message.success('编辑成功')
     formVisible.value = false
     fetchDetail()
@@ -283,6 +283,9 @@ async function handleFormSubmit() {
 onMounted(() => {
   fetchDetail()
 })
+
+// 点击关系表/拓扑中的关联资源跳转时，路由参数变化但组件被复用，需重拉数据
+watch(resourceId, () => fetchDetail())
 </script>
 
 <style scoped lang="scss">

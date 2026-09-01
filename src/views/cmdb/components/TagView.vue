@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus } from '@arco-design/web-vue/es/icon'
 import * as tagApi from '../../../api/tag'
@@ -73,6 +73,9 @@ async function handleRemove(tag: IResourceTag) {
 }
 
 onMounted(() => fetchTags())
+
+// 点击关联资源跳转（路由参数变化组件复用）时重拉
+watch(() => props.resourceId, () => fetchTags())
 </script>
 
 <style scoped lang="scss">
