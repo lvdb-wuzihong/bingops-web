@@ -188,6 +188,7 @@ export const RISK_LEVEL_MAP: Record<string, { text: string; color: string }> = {
   low: { text: '低风险', color: 'green' },
   medium: { text: '中风险', color: 'orange' },
   high: { text: '高风险', color: 'red' },
+  critical: { text: '极高风险', color: 'magenta' },
 }
 
 export function riskLevel(s: string) {

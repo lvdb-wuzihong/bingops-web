@@ -65,45 +65,15 @@
     </a-card>
 
     <!-- 新增/编辑弹窗 -->
-    <a-modal v-model:visible="formVisible" :title="editingId ? '编辑 Runbook' : '新增 Runbook'" :width="680" :ok-loading="formLoading" @ok="handleFormSubmit">
-      <a-form :model="formData" :rules="formRules" layout="vertical" ref="formRef">
-        <a-row :gutter="16">
-          <a-col :span="12"><a-form-item field="name" label="名称"><a-input v-model="formData.name" placeholder="如：nginx 配置滚动更新" /></a-form-item></a-col>
-          <a-col :span="12"><a-form-item field="category" label="分类"><a-input v-model="formData.category" placeholder="如：发布 / 运维 / 应急" /></a-form-item></a-col>
-        </a-row>
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item field="risk_level" label="风险等级">
-              <a-select v-model="formData.risk_level">
-                <a-option value="low">低风险</a-option>
-                <a-option value="medium">中风险</a-option>
-                <a-option value="high">高风险</a-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="12"><a-form-item field="auto_rollback" label="失败自动回滚"><a-switch v-model="formData.auto_rollback" /></a-form-item></a-col>
-        </a-row>
+    <a-modal v-model:visible="formVisible" :title="editingId ? '编辑 Runbook' : '新增 Runbook'" :width="860" :ok-loading="formLoading" @ok="handleFormSubmit">
+      <a-form :model="formData" layout="vertical">
         <a-form-item field="description" label="描述"><a-textarea v-model="formData.description" placeholder="可选" :auto-size="{ minRows: 2, maxRows: 4 }" /></a-form-item>
-        <a-form-item field="targetModels" label="目标模型白名单">
-          <a-select v-model="formData.targetModels" multiple allow-search placeholder="选择允许作为执行目标的模型；留空默认 aliyun_ecs / gcp_compute">
-            <a-option v-for="opt in modelOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-option>
-          </a-select>
+        <a-form-item field="docYaml" label="Runbook 定义（YAML 单文档）">
+          <YamlEditor v-model="formData.docYaml" height="480px" />
+          <template #extra>
+            <span class="yaml-tip">字段：name* / category / target_models / risk_level(low|medium|high|critical) / auto_rollback / connection / params_schema / steps*（支持 timeout_sec / serial / batch_pause_sec / rollbackable）；存储与 API 契约仍为 JSON，提交时自动转换；connection 仅存钥匙名，真钥匙在 Vault</span>
+          </template>
         </a-form-item>
-        <a-form-item field="stepsText" label="步骤编排（JSON 数组，必填）">
-          <a-textarea v-model="formData.stepsText" placeholder='[{"key": "deploy", "name": "部署", "type": "ansible", "playbook": "playbooks/deploy.yml", "rollbackable": true}]' :auto-size="{ minRows: 4, maxRows: 12 }" />
-        </a-form-item>
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item field="paramsSchemaText" label="参数 schema（JSON，可选）">
-              <a-textarea v-model="formData.paramsSchemaText" placeholder='{"version": {"type": "string"}}' :auto-size="{ minRows: 2, maxRows: 8 }" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item field="connectionText" label="连接配置（JSON，可选，仅存钥匙名）">
-              <a-textarea v-model="formData.connectionText" placeholder='{"ssh_user": "ops", "ssh_key_ref": "prod-node-key", "become": true}' :auto-size="{ minRows: 2, maxRows: 8 }" />
-            </a-form-item>
-          </a-col>
-        </a-row>
       </a-form>
     </a-modal>
 
@@ -120,8 +90,9 @@ import { IconPlus, IconEdit, IconDelete, IconRefresh, IconPlayArrow, IconCode } 
 import * as jobApi from '../../api/job'
 import { riskLevel } from '../../api/job'
 import type { IRunbook } from '../../api/job'
-import { getModels } from '../../api/model'
 import ExecuteJobModal from './components/ExecuteJobModal.vue'
+import YamlEditor from '../../components/YamlEditor.vue'
+import { parseYaml, dumpYaml } from '../../utils/yaml'
 
 const router = useRouter()
 
@@ -176,82 +147,110 @@ async function handleToggle(record: IRunbook, isActive: boolean) {
 const formVisible = ref(false)
 const formLoading = ref(false)
 const editingId = ref<number | null>(null)
-const formRef = ref()
 
-const formData = reactive({
-  name: '', category: '', description: '', risk_level: 'low', auto_rollback: false,
-  targetModels: [] as string[],
-  stepsText: '', paramsSchemaText: '', connectionText: '',
-})
+const formData = reactive({ description: '', docYaml: '' })
 
-const formRules = {
-  name: [{ required: true, message: '请输入名称' }],
-  stepsText: [{ required: true, message: '请编写步骤编排' }],
+// v20 单文档格式：标量字段也进 YAML（与 GitLab runbook-as-code 同构）；connection 凭据键除外
+const RISK_LEVELS = ['low', 'medium', 'high', 'critical']
+
+// 新建预填模板（含注释，YAML 注释是 runbook-as-code 的重要载体）
+const NEW_RUNBOOK_TEMPLATE = `name: 批量重启服务
+category: restart
+target_models: [aliyun_ecs, gcp_compute]  # 目标范围硬校验；P1 默认即此两类
+risk_level: medium            # low/medium/high/critical，叠加环境维度提级（P3）
+auto_rollback: false          # opt-in 自动回滚，默认手动
+connection:                   # runner 据此渲染 inventory 变量；仅钥匙名，真钥匙在 Vault
+  ssh_user: ops               # 登录用户（非 root）
+  ssh_key_ref: prod-node-key  # Vault 键名
+  become: true                # 默认 false，需提权显式开
+  become_method: sudo
+  become_user: root
+params_schema:                # 条目 spec：type/required/default/enum/description
+  svc: {type: string, required: true, description: 服务名}
+  retries: {type: number, default: 1}   # default 下发时后端自动回填，表单只收用户填写项
+steps:
+  - key: restart_app
+    name: 重启服务
+    type: ansible             # P1 仅 ansible；terraform 枚举占位 P2 点亮
+    playbook: ansible/playbooks/app_restart.yml
+    timeout_sec: 600
+    serial: "30%"             # 灰度批次
+    batch_pause_sec: 60       # 批间暂停
+    rollbackable: true        # 引擎回滚 = 同 playbook 重发 + bingops_action=undo
+  - key: run_migration
+    type: ansible
+    playbook: ansible/playbooks/db_migrate.yml
+    rollbackable: false       # 不可逆步骤：UI 启动前高亮，回滚链不穿过它
+`
+
+// 解析并校验单文档（UX 层；权威仍是后端 400）
+function loadDoc(): Record<string, unknown> | null {
+  const res = parseYaml<Record<string, unknown>>(formData.docYaml)
+  if (!res.ok) { Message.warning(`YAML 语法错误：${res.error}`); return null }
+  const doc = res.data
+  if (!doc || Array.isArray(doc) || typeof doc !== 'object') { Message.warning('Runbook 定义必须是 YAML 映射'); return null }
+  if (typeof doc.name !== 'string' || !doc.name.trim()) { Message.warning('缺少必填字段：name'); return null }
+  if (!Array.isArray(doc.steps) || !doc.steps.length) { Message.warning('缺少必填字段：steps（非空列表）'); return null }
+  const risk = String(doc.risk_level ?? 'low')
+  if (!RISK_LEVELS.includes(risk)) { Message.warning('risk_level 必须是 low / medium / high / critical'); return null }
+  if (doc.connection !== undefined && (typeof doc.connection !== 'object' || Array.isArray(doc.connection) || doc.connection === null)) { Message.warning('connection 必须是键值映射'); return null }
+  return doc
 }
 
-function parseJson(text: string, label: string, opts?: { array?: boolean }): Record<string, unknown>[] | Record<string, unknown> | null {
-  if (!text.trim()) return opts?.array ? null : {}
-  try {
-    const val = JSON.parse(text)
-    if (opts?.array && !Array.isArray(val)) { Message.warning(`${label}必须是 JSON 数组`); return null }
-    if (!opts?.array && (Array.isArray(val) || typeof val !== 'object')) { Message.warning(`${label}必须是 JSON 对象`); return null }
-    return val
-  } catch {
-    Message.warning(`${label}不是合法 JSON`)
-    return null
-  }
+// 回显：按示例字段序组装整文档（dump 保插入序，往返无 diff 噪音）
+function buildDocYaml(record: IRunbook): string {
+  const doc: Record<string, unknown> = { name: record.name }
+  if (record.category) doc.category = record.category
+  if ((record.target_models || []).length) doc.target_models = record.target_models
+  doc.risk_level = record.risk_level
+  doc.auto_rollback = record.auto_rollback
+  if (Object.keys(record.connection || {}).length) doc.connection = record.connection
+  if (Object.keys(record.params_schema).length) doc.params_schema = record.params_schema
+  doc.steps = record.steps
+  return dumpYaml(doc)
 }
 
 function handleCreate() {
   editingId.value = null
-  Object.assign(formData, { name: '', category: '', description: '', risk_level: 'low', auto_rollback: false, targetModels: [], stepsText: '', paramsSchemaText: '', connectionText: '' })
+  Object.assign(formData, { description: '', docYaml: NEW_RUNBOOK_TEMPLATE })
   formVisible.value = true
 }
 
 function handleEdit(record: IRunbook) {
   editingId.value = record.id
   Object.assign(formData, {
-    name: record.name, category: record.category || '', description: record.description || '',
-    risk_level: record.risk_level, auto_rollback: record.auto_rollback,
-    targetModels: [...(record.target_models || [])],
-    stepsText: JSON.stringify(record.steps, null, 2),
-    paramsSchemaText: Object.keys(record.params_schema).length ? JSON.stringify(record.params_schema, null, 2) : '',
-    connectionText: Object.keys(record.connection).length ? JSON.stringify(record.connection, null, 2) : '',
+    description: record.description || '',
+    docYaml: buildDocYaml(record),
   })
   formVisible.value = true
 }
 
 async function handleFormSubmit() {
-  const errors = await formRef.value?.validate()
-  if (errors) return
-  const steps = parseJson(formData.stepsText, '步骤编排', { array: true })
-  if (steps === null) return
-  const paramsSchema = parseJson(formData.paramsSchemaText, '参数 schema')
-  if (paramsSchema === null) return
-  const connection = parseJson(formData.connectionText, '连接配置')
-  if (connection === null) return
+  const doc = loadDoc()
+  if (doc === null) return
 
   formLoading.value = true
   try {
+    const payload = {
+      name: String(doc.name).trim(),
+      category: typeof doc.category === 'string' && doc.category.trim() ? doc.category.trim() : null,
+      description: formData.description || null,
+      risk_level: String(doc.risk_level ?? 'low'),
+      auto_rollback: doc.auto_rollback === true,
+      target_models: Array.isArray(doc.target_models) && doc.target_models.length ? (doc.target_models as string[]) : null,
+      connection: (doc.connection && typeof doc.connection === 'object' && !Array.isArray(doc.connection)
+        ? doc.connection
+        : {}) as Record<string, unknown>,
+      params_schema: (doc.params_schema && typeof doc.params_schema === 'object' && !Array.isArray(doc.params_schema)
+        ? doc.params_schema
+        : {}) as Record<string, unknown>,
+      steps: doc.steps as Record<string, unknown>[],
+    }
     if (editingId.value) {
-      await jobApi.updateRunbook(editingId.value, {
-        name: formData.name, category: formData.category || null, description: formData.description || null,
-        risk_level: formData.risk_level, auto_rollback: formData.auto_rollback,
-        target_models: formData.targetModels.length ? formData.targetModels : null,
-        steps: steps as Record<string, unknown>[],
-        params_schema: paramsSchema as Record<string, unknown>,
-        connection: connection as Record<string, unknown>,
-      })
+      await jobApi.updateRunbook(editingId.value, payload)
       Message.success('编辑成功（步骤/参数变更将版本 +1）')
     } else {
-      await jobApi.createRunbook({
-        name: formData.name, category: formData.category || null, description: formData.description || null,
-        risk_level: formData.risk_level, auto_rollback: formData.auto_rollback,
-        target_models: formData.targetModels.length ? formData.targetModels : null,
-        steps: steps as Record<string, unknown>[],
-        params_schema: paramsSchema as Record<string, unknown>,
-        connection: connection as Record<string, unknown>,
-      })
+      await jobApi.createRunbook(payload)
       Message.success('新增成功')
     }
     formVisible.value = false
@@ -276,19 +275,10 @@ function onExecuted(executionId: number) {
   router.push({ name: 'JobExecutionDetail', params: { id: String(executionId) } })
 }
 
-// 模型选项（目标模型白名单下拉用）
-const modelOptions = ref<{ value: string; label: string }[]>([])
-
-async function fetchModelOptions() {
-  try {
-    const res = await getModels()
-    modelOptions.value = res.data.map(m => ({ value: m.code, label: `${m.name}（${m.code}）` }))
-  } catch { /* ignore */ }
-}
+// 模型选项（目标模型白名单下拉用）——已随结构化表单移除
 
 onMounted(() => {
   fetchData()
-  fetchModelOptions()
 })
 </script>
 
@@ -309,4 +299,6 @@ onMounted(() => {
   .empty-title { margin: 8px 0 0; font-size: 15px; font-weight: 500; color: $text-primary; }
   .empty-desc { margin: 0 0 12px; font-size: 13px; color: $text-secondary; }
 }
+
+.yaml-tip { font-size: $font-size-xs; color: $text-secondary; }
 </style>

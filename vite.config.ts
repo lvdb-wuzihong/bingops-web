@@ -7,7 +7,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      // rolldown 对带 ?query 的 exports 子路径解析失败，直连具体文件
+      'monaco-editor/esm/vs/editor/editor.worker.js': resolve(__dirname, 'node_modules/monaco-editor/esm/vs/editor/editor.worker.js'),
     },
+  },
+  worker: {
+    format: 'es',
   },
   server: {
     port: 3000,
