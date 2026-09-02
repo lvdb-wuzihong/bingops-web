@@ -83,7 +83,7 @@ export interface IResourceOption {
   status: string | null
 }
 
-export function getResourceOptions(params?: { keyword?: string; model_id?: number; limit?: number }) {
+export function getResourceOptions(params?: { keyword?: string; model_id?: number; status?: string; limit?: number }) {
   return request.get<IResourceOption[]>('/api/v1/cmdb/resources/options', { params })
 }
 

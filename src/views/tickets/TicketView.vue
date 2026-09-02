@@ -297,7 +297,7 @@
         <a-form-item label="执行目标（必填：本次优先，否则用工单已有目标）">
           <a-select
             v-model="dispatchForm.target_ids"
-            placeholder="输入名称/实例 ID 搜索资源，可多选"
+            placeholder="输入名称/实例 ID 搜索运行中资源，可多选"
             allow-clear
             allow-search
             multiple
@@ -494,7 +494,8 @@ const targetSearching = ref(false)
 async function searchTargetResources(keyword: string) {
   targetSearching.value = true
   try {
-    const res = await getResourceOptions({ keyword: keyword || undefined, limit: 20 })
+    // 仅 running 可作执行目标（与后端执行态硬校验同规则）
+    const res = await getResourceOptions({ keyword: keyword || undefined, status: 'running', limit: 20 })
     // 保留已选项避免回显丢失（下发弹窗用）
     const merged = [...res.data]
     for (const r of targetResourceOptions.value) {
@@ -777,6 +778,19 @@ async function openDispatchModal() {
     target_ids: [...(detail.value?.target_resource_ids ?? [])],
   })
   paramValues.value = {}
+  targetResourceOptions.value = []
+  // 存量目标回显：候选已过滤 running，已选 ID 不在首屏候选中，逐个拉详情补选项
+  if (dispatchForm.target_ids.length) {
+    const details = await Promise.allSettled(dispatchForm.target_ids.map(id => getResourceDetail(id)))
+    const extra: IResourceOption[] = []
+    for (const d of details) {
+      if (d.status === 'fulfilled') {
+        const r = d.value.data
+        extra.push({ id: r.id, name: r.name, model_code: null, provider: r.provider, region: r.region, status: r.status })
+      }
+    }
+    targetResourceOptions.value = extra
+  }
   try { runbookOptions.value = (await jobApi.getRunbooks({ page: 1, page_size: 100 })).data.items } catch { /* ignore */ }
   searchTargetResources('')
   dispatchVisible.value = true
@@ -789,6 +803,14 @@ async function handleDispatch() {
   // 下发时目标必填：本次传入优先，否则用工单已有目标，皆空拒绝
   if (!dispatchForm.target_ids.length && !(detail.value.target_resource_ids || []).length) {
     Message.warning('请选择执行目标'); return
+  }
+  // 镜像后端执行态硬校验：仅 running 可作执行目标（fail-fast，不等后端 400）
+  const notRunning = dispatchForm.target_ids
+    .map(id => targetResourceOptions.value.find(o => o.id === id))
+    .filter((o): o is IResourceOption => !!o && o.status !== 'running')
+  if (notRunning.length) {
+    Message.warning(`以下目标非运行中，无法下发：${notRunning.map(o => o.name).join('、')}`)
+    return
   }
   // 动态参数：只发送实际填写值，required 前端先校验
   const params: Record<string, unknown> = {}

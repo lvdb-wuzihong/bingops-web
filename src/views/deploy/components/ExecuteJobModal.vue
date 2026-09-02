@@ -27,7 +27,7 @@
           <a-option v-for="r in resourceOptions" :key="r.id" :value="r.id">{{ r.name }}（#{{ r.id }}）</a-option>
         </a-select>
         <template #extra>
-          <span class="code-ref-tip">受 runbook 目标模型约束：{{ targetModelCodes.join(' / ') }}，其他模型资源不可选</span>
+          <span class="code-ref-tip">受 runbook 目标模型约束：{{ targetModelCodes.join(' / ') }}，其他模型资源不可选；仅运行中（running）资源可作执行目标</span>
         </template>
       </a-form-item>
       <a-form-item field="paramsText" label="执行参数（JSON，可选）">
@@ -116,13 +116,13 @@ async function searchResources(keyword: string) {
   try {
     let items: ICmdbResource[]
     if (allowedModelIds.value.length > 0) {
-      // 按目标模型白名单逐模型查询后合并，下拉只出现 ECS/GCE 等目标模型
+      // 按目标模型白名单逐模型查询后合并；仅 running 可作执行目标（与后端执行态硬校验同规则）
       const results = await Promise.all(allowedModelIds.value.map(mid =>
-        getResourceList({ keyword: keyword || undefined, model_id: mid, page: 1, page_size: 20 }).then(r => r.data.items),
+        getResourceList({ keyword: keyword || undefined, model_id: mid, status: 'running', page: 1, page_size: 20 }).then(r => r.data.items),
       ))
       items = results.flat()
     } else {
-      items = (await getResourceList({ keyword: keyword || undefined, page: 1, page_size: 20 })).data.items
+      items = (await getResourceList({ keyword: keyword || undefined, status: 'running', page: 1, page_size: 20 })).data.items
     }
     // 合并已选项，避免回显丢失
     const merged = [...items]
