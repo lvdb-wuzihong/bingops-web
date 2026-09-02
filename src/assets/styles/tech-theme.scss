@@ -190,4 +190,6 @@
 .arco-tooltip-content {
   background: $bg-secondary;
   border: 1px solid $border-color-light;
+  // Arco tooltip 文字默认白色（深底配色），浅底覆写后需同步改字色，否则白底白字
+  color: $text-primary;
 }

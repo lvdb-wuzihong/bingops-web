@@ -21,12 +21,21 @@
       >
         <template #app_code="{ record }"><a-tag size="small" color="arcoblue">{{ record.app_code }}</a-tag></template>
         <template #repo_url="{ record }">
-          <a-link v-if="record.repo_url" class="repo-link" :href="record.repo_url" target="_blank">{{ record.repo_url.replace(/^https?:\/\//, '') }}</a-link>
+          <a-space v-if="record.repo_url" size="mini">
+            <a-tooltip :content="record.repo_url">
+              <a-link class="repo-link" :href="record.repo_url" target="_blank">{{ record.repo_url.replace(/^https?:\/\//, '') }}</a-link>
+            </a-tooltip>
+            <a-button type="text" size="mini" class="copy-btn" title="复制地址" @click="copyText(record.repo_url)">
+              <template #icon><icon-copy /></template>
+            </a-button>
+          </a-space>
           <span v-else>-</span>
         </template>
         <template #pipelines="{ record }">
           <a-space v-if="Object.keys(record.pipelines || {}).length" wrap size="mini">
-            <a-tag v-for="env in Object.keys(record.pipelines)" :key="env" size="small" :color="envColor(env)">{{ env }}</a-tag>
+            <a-tooltip v-for="env in Object.keys(record.pipelines)" :key="env" :content="record.pipelines[env]">
+              <a-tag size="small" :color="envColor(env)" class="pipeline-tag" @click="openUrl(record.pipelines[env])">{{ env }}</a-tag>
+            </a-tooltip>
           </a-space>
           <span v-else>-</span>
         </template>
@@ -121,7 +130,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { IconPlus, IconEdit, IconDelete, IconApps } from '@arco-design/web-vue/es/icon'
+import { IconPlus, IconEdit, IconDelete, IconApps, IconCopy } from '@arco-design/web-vue/es/icon'
 import * as appApi from '../../api/app'
 import type { IBusinessApp, IAppResource } from '../../api/app'
 
@@ -253,6 +262,15 @@ function envColor(env: string): string {
   return 'blue'
 }
 
+// 列表行内直达：仓库复制、流水线新窗口打开
+function copyText(text: string) {
+  navigator.clipboard.writeText(text).then(() => Message.success('已复制')).catch(() => Message.error('复制失败'))
+}
+
+function openUrl(url: string) {
+  if (url) window.open(url, '_blank')
+}
+
 function openResources(app: IBusinessApp) {
   drawerApp.value = app
   envFilter.value = undefined
@@ -298,6 +316,10 @@ onMounted(() => fetchData())
   display: inline-block; max-width: 150px; vertical-align: bottom;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+.copy-btn { color: $text-secondary; &:hover { color: $color-primary; } }
+
+.pipeline-tag { cursor: pointer; }
 
 .pipeline-editor {
   display: flex; flex-direction: column; gap: $spacing-xs; width: 100%;
