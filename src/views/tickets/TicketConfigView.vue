@@ -496,7 +496,8 @@ watch(() => oncallForm.group_id, async (gid) => {
 
 function openOncallModal(s: IOncallSchedule | null) {
   Object.assign(oncallForm, {
-    id: s?.id ?? null, group_id: s?.group_id ?? oncallGroupId.value, oncall_date: s ? new Date(s.oncall_date).toISOString().slice(0, 10) : '',
+    // 后端返回 naive 'YYYY-MM-DDTHH:mm:ss'，禁用 Date 时区转换（toISOString 会回退一天），直接截取日期部分
+    id: s?.id ?? null, group_id: s?.group_id ?? oncallGroupId.value, oncall_date: s ? s.oncall_date.slice(0, 10) : '',
     tier1: [...(s?.tier1 ?? [])], tier2: [...(s?.tier2 ?? [])], tier3: [...(s?.tier3 ?? [])], note: s?.note ?? '',
   })
   oncallDateRange.value = undefined
@@ -525,8 +526,9 @@ async function handleSaveOncall() {
       const [start, end] = range!
       const isRange = !!end && end > start
       const res = await metaApi.createOncallSchedule({
-        group_id: oncallForm.group_id, oncall_date: new Date(start).toISOString(),
-        end_date: isRange ? new Date(end).toISOString() : null,
+        // 直接传 YYYY-MM-DD：后端仅取 .date() 展开按天建单，date-only 无时区转换风险
+        group_id: oncallForm.group_id, oncall_date: start,
+        end_date: isRange ? end : null,
         tier1: oncallForm.tier1, tier2: oncallForm.tier2, tier3: oncallForm.tier3, note: oncallForm.note || null,
       })
       // 双形态响应：范围批量返回 {created, skipped}；单日返回单对象
