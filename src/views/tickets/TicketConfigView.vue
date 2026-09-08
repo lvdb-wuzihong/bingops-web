@@ -206,20 +206,20 @@
     <!-- 值班弹窗 -->
     <a-modal v-model:visible="oncallModalVisible" :title="oncallForm.id ? '编辑排班' : '新增排班'" :width="520" :ok-loading="oncallSaving" @ok="handleSaveOncall">
       <a-form :model="oncallForm" layout="vertical">
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="处理组">
-              <a-select v-model="oncallForm.group_id" placeholder="请选择" :disabled="!!oncallForm.id">
-                <a-option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</a-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="值班日期">
-              <a-date-picker v-model="oncallForm.oncall_date" value-format="YYYY-MM-DD" style="width: 100%" :disabled="!!oncallForm.id" />
-            </a-form-item>
-          </a-col>
-        </a-row>
+        <a-form-item label="处理组">
+          <a-select v-model="oncallForm.group_id" placeholder="请选择" :disabled="!!oncallForm.id">
+            <a-option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</a-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="值班日期">
+          <!-- 新建支持日期范围批量建单（范围内已排班日自动跳过）；编辑锁定单日 -->
+          <div v-if="!oncallForm.id" class="oncall-date-row">
+            <a-range-picker v-model="oncallDateRange" value-format="YYYY-MM-DD" style="flex: 1" />
+            <a-button size="small" @click="fillOncallWeek(0)">本周</a-button>
+            <a-button size="small" @click="fillOncallWeek(1)">下周</a-button>
+          </div>
+          <a-date-picker v-else v-model="oncallForm.oncall_date" value-format="YYYY-MM-DD" style="width: 100%" disabled />
+        </a-form-item>
         <a-form-item label="一线值班（tier1，自动派单轮转）">
           <a-select v-model="oncallForm.tier1" multiple allow-search :disabled="!oncallForm.group_id" :placeholder="oncallForm.group_id ? '从处理组值班池选择' : '先选择处理组'" style="width: 100%">
             <a-option v-for="u in oncallCandidates" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</a-option>
@@ -236,7 +236,7 @@
           </a-select>
         </a-form-item>
         <p v-if="!oncallForm.group_id" class="inherit-text">值班人员池 = 所选处理组的活跃成员，请先选择处理组</p>
-        <a-form-item label="备注"><a-input v-model="oncallForm.note" placeholder="可选" /></a-form-item>
+        <a-form-item label="备注"><a-input v-model="oncallForm.note" placeholder="可选；替班建议留痕：A 休假，B 替" /></a-form-item>
       </a-form>
     </a-modal>
   </div>
@@ -458,6 +458,8 @@ function formatDate(t: string) { return new Date(t).toLocaleDateString('zh-CN') 
 
 const oncallModalVisible = ref(false)
 const oncallSaving = ref(false)
+// 新建模式：[起始日, 结束日（含）]；start===end 视为单日
+const oncallDateRange = ref<[string, string] | undefined>()
 const oncallForm = reactive({
   id: null as number | null, group_id: undefined as number | undefined, oncall_date: '',
   tier1: [] as number[], tier2: [] as number[], tier3: [] as number[], note: '',
@@ -465,6 +467,17 @@ const oncallForm = reactive({
 
 // 值班池 = 所选处理组的候选人（组活跃成员，唯一合法值班池），禁止全量用户
 const oncallCandidates = ref<IAssigneeCandidate[]>([])
+
+// 规范 12.4：契约不强制周对齐，周轮转便捷性由快捷方式提供——自动填周一~周日
+function fillOncallWeek(weekOffset: number) {
+  const now = new Date()
+  const monday = new Date(now)
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7) + weekOffset * 7)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  oncallDateRange.value = [fmt(monday), fmt(sunday)]
+}
 
 async function fetchOncallCandidates(gid: number | undefined) {
   oncallCandidates.value = []
@@ -486,25 +499,44 @@ function openOncallModal(s: IOncallSchedule | null) {
     id: s?.id ?? null, group_id: s?.group_id ?? oncallGroupId.value, oncall_date: s ? new Date(s.oncall_date).toISOString().slice(0, 10) : '',
     tier1: [...(s?.tier1 ?? [])], tier2: [...(s?.tier2 ?? [])], tier3: [...(s?.tier3 ?? [])], note: s?.note ?? '',
   })
+  oncallDateRange.value = undefined
   fetchOncallCandidates(oncallForm.group_id)
   oncallModalVisible.value = true
 }
 
 async function handleSaveOncall() {
-  if (!oncallForm.group_id || !oncallForm.oncall_date) { Message.warning('处理组与日期必填'); return }
+  // 新建用范围选择（start 必填），编辑用锁定日期
+  const range = oncallDateRange.value
+  const dateOk = oncallForm.id ? !!oncallForm.oncall_date : !!range?.[0]
+  if (!oncallForm.group_id || !dateOk) { Message.warning('处理组与日期必填'); return }
+  // 规范 12.4：范围录入含端点上限 31 天
+  if (range?.[0] && range?.[1] && range[1] > range[0]
+    && (new Date(range[1]).getTime() - new Date(range[0]).getTime()) / 86400000 > 30) {
+    Message.warning('日期范围单次最多 31 天'); return
+  }
   oncallSaving.value = true
   try {
     if (oncallForm.id) {
       await metaApi.updateOncallSchedule(oncallForm.id, {
         tier1: oncallForm.tier1, tier2: oncallForm.tier2, tier3: oncallForm.tier3, note: oncallForm.note || null,
       })
+      Message.success('保存成功')
     } else {
-      await metaApi.createOncallSchedule({
-        group_id: oncallForm.group_id, oncall_date: new Date(oncallForm.oncall_date).toISOString(),
+      const [start, end] = range!
+      const isRange = !!end && end > start
+      const res = await metaApi.createOncallSchedule({
+        group_id: oncallForm.group_id, oncall_date: new Date(start).toISOString(),
+        end_date: isRange ? new Date(end).toISOString() : null,
         tier1: oncallForm.tier1, tier2: oncallForm.tier2, tier3: oncallForm.tier3, note: oncallForm.note || null,
       })
+      // 双形态响应：范围批量返回 {created, skipped}；单日返回单对象
+      if ('created' in res.data) {
+        const skippedNote = res.data.skipped.length ? `，${res.data.skipped.length} 天已排班跳过` : ''
+        Message.success(`已创建 ${res.data.created.length} 天排班${skippedNote}`)
+      } else {
+        Message.success('保存成功')
+      }
     }
-    Message.success('保存成功')
     oncallModalVisible.value = false
     fetchOncall()
   } catch { /* 拦截器已提示（同组同日期唯一） */ } finally { oncallSaving.value = false }
@@ -532,6 +564,7 @@ onMounted(() => {
 
 .catalog-group { margin-bottom: $spacing-lg; }
 .inherit-text { color: $text-disabled; font-size: $font-size-sm; }
+.oncall-date-row { display: flex; gap: $spacing-xs; align-items: center; }
 .catalog-cat {
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: $spacing-xs; padding: $spacing-xs $spacing-sm;

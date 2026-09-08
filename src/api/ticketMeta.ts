@@ -140,6 +140,8 @@ export interface IOncallSchedule {
 export interface IOncallCreate {
   group_id: number
   oncall_date: string
+  // 结束日期（含）；不传 = oncall_date 单日，传则范围批量建单（范围内已排班日自动跳过）
+  end_date?: string | null
   tier1?: number[]
   tier2?: number[]
   tier3?: number[]
@@ -157,8 +159,11 @@ export function getOncallSchedules(params?: { group_id?: number; date_from?: str
   return request.get<IOncallSchedule[]>('/api/v1/oncall-schedules', { params })
 }
 
+// 创建结果双形态：单日返回单对象；范围批量返回 {created, skipped}
+export type IOncallCreateResult = IOncallSchedule | { created: IOncallSchedule[]; skipped: string[] }
+
 export function createOncallSchedule(data: IOncallCreate) {
-  return request.post<IOncallSchedule>('/api/v1/oncall-schedules', data)
+  return request.post<IOncallCreateResult>('/api/v1/oncall-schedules', data)
 }
 
 export function updateOncallSchedule(id: number, data: IOncallUpdate) {
