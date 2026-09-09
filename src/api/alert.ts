@@ -67,7 +67,7 @@ export function getAlertStats(params?: { group_by?: string; since?: string; unti
   return request.get<IAlertStatsSummary>('/api/v1/alerts/stats/summary', { params })
 }
 
-// ========== 规则映射（二期起为分发源：绑定数据源 + 评估契约字段） ==========
+// ========== 告警规则（二期起为分发源：绑定数据源 + 评估契约字段） ==========
 
 export interface IAlertRule {
   id: number

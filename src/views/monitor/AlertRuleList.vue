@@ -5,7 +5,7 @@
         <span class="panel-title">告警规则</span>
         <a-space>
           <a-button type="primary" size="small" @click="openRuleModal(null)">
-            <template #icon><icon-plus /></template>新增映射
+            <template #icon><icon-plus /></template>新增规则
           </a-button>
           <a-button size="small" @click="fetchRules">
             <template #icon><icon-refresh /></template>
@@ -14,7 +14,7 @@
       </div>
 
       <a-alert class="rule-tip" type="info">
-        规则决定告警的开单去向与评估方式：平台定义规则、执行器消费（rule_code 是事件聚合与统计的键）；绑定数据源与评估表达式后由执行器按节拍评估（二期分发）；未配置映射的规则事件照常落库，但跳过自动开单。
+        规则决定告警的开单去向与评估方式：平台定义规则、执行器消费（rule_code 是事件聚合与统计的键）；绑定数据源与评估表达式后由执行器按节拍评估（二期分发）；未配置规则的告警事件照常落库，但跳过自动开单。
         <br />注意：告警↔工单联动受全局总闸 BINGOPS_ALERT_TICKET_ENABLED 控制，默认关闭（告警只落事件，不创建/流转工单）；开启后仍受下方「自动开单」细粒度控制。
       </a-alert>
 

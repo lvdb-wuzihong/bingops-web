@@ -137,7 +137,7 @@ const routes: RouteRecordRaw[] = [
             path: 'rules',
             name: 'AlertRuleList',
             component: () => import('../views/monitor/AlertRuleList.vue'),
-            meta: { title: '规则映射' },
+            meta: { title: '告警规则' },
           },
         ],
       },
