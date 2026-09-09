@@ -2,7 +2,7 @@
   <div class="alert-rule-list">
     <a-card :bordered="false" class="list-card">
       <div class="filter-bar">
-        <span class="panel-title">告警规则映射</span>
+        <span class="panel-title">告警规则</span>
         <a-space>
           <a-button type="primary" size="small" @click="openRuleModal(null)">
             <template #icon><icon-plus /></template>新增映射
@@ -14,7 +14,7 @@
       </div>
 
       <a-alert class="rule-tip" type="info">
-        规则映射决定告警的开单去向：code 须与执行器侧 rule_code 对齐（人工纪律）；绑定数据源与评估 SQL 后由执行器按节拍评估（二期分发）；未配置映射的规则事件照常落库，但跳过自动开单。
+        规则决定告警的开单去向与评估方式：平台定义规则、执行器消费（rule_code 是事件聚合与统计的键）；绑定数据源与评估表达式后由执行器按节拍评估（二期分发）；未配置映射的规则事件照常落库，但跳过自动开单。
         <br />注意：告警↔工单联动受全局总闸 BINGOPS_ALERT_TICKET_ENABLED 控制，默认关闭（告警只落事件，不创建/流转工单）；开启后仍受下方「自动开单」细粒度控制。
       </a-alert>
 
@@ -51,23 +51,12 @@
     </a-card>
 
     <!-- 新增/编辑弹窗 -->
-    <a-modal v-model:visible="formVisible" :title="editingId ? '编辑规则映射' : '新增规则映射'" :width="640" :ok-loading="formLoading" @ok="handleSubmit">
+    <a-modal v-model:visible="formVisible" :title="editingId ? '编辑规则' : '新增规则'" :width="640" :ok-loading="formLoading" @ok="handleSubmit">
       <a-form :model="formData" layout="vertical">
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item field="source" label="来源" required>
-              <a-select v-model="formData.source" placeholder="选择或输入" allow-create>
-                <a-option value="ck-log-alert">ck-log-alert（CK 日志）</a-option>
-                <a-option value="n9e">夜莺 n9e（指标）</a-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item field="code" label="规则 code" required>
-              <a-input v-model="formData.code" placeholder="与执行器 rule_code 对齐" :disabled="!!editingId" />
-            </a-form-item>
-          </a-col>
-        </a-row>
+        <!-- 夜莺退役后规则为平台原生：来源固定 bingops（过渡期历史数据在列表「告警来源」列区分） -->
+        <a-form-item field="code" label="规则 code" required>
+          <a-input v-model="formData.code" placeholder="规则唯一标识（事件聚合与统计的键）" :disabled="!!editingId" />
+        </a-form-item>
         <a-form-item field="name" label="规则名称"><a-input v-model="formData.name" placeholder="可选，展示用" /></a-form-item>
         <a-row :gutter="16">
           <a-col :span="12">
@@ -80,6 +69,9 @@
           <a-col :span="12">
             <a-form-item field="stale_minutes" label="恢复推导窗口（分钟）">
               <a-input-number v-model="formData.stale_minutes" :min="1" hide-button style="width: 100%" />
+              <template #extra>
+                <span class="switch-tip">建议 2–3 × 窗口（分钟）</span>
+              </template>
             </a-form-item>
           </a-col>
         </a-row>
@@ -116,31 +108,35 @@
             <a-option v-for="s in sources" :key="s.id" :value="s.id">{{ s.name }}（{{ s.type }}）</a-option>
           </a-select>
         </a-form-item>
-        <a-form-item field="eval_sql" label="评估 SQL">
-          <a-textarea v-model="formData.eval_sql" placeholder="契约：单行两列 error_count + log_details；窗口占位 {window_minutes}" :auto-size="{ minRows: 3, maxRows: 8 }" />
-        </a-form-item>
-        <a-row :gutter="16">
-          <a-col :span="6">
-            <a-form-item field="threshold" label="阈值">
-              <a-input-number v-model="formData.threshold" :min="1" hide-button style="width: 100%" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="6">
-            <a-form-item field="interval_minutes" label="窗口(分钟)">
-              <a-input-number v-model="formData.interval_minutes" :min="1" hide-button style="width: 100%" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="6">
-            <a-form-item field="for_rounds" label="防抖轮次">
-              <a-input-number v-model="formData.for_rounds" :min="1" hide-button style="width: 100%" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="6">
-            <a-form-item field="detail_limit" label="明细上限">
-              <a-input-number v-model="formData.detail_limit" :min="1" hide-button style="width: 100%" />
-            </a-form-item>
-          </a-col>
-        </a-row>
+        <!-- 按数据源类型联动：clickhouse=SQL 契约；victoria/prometheus=PromQL（vector 非空即触发，阈值不参与）；未绑定=评估区折叠 -->
+        <template v-if="formData.source_id">
+          <a-form-item field="eval_sql" :label="selectedSourceType === 'clickhouse' ? '评估 SQL（ClickHouse）' : 'PromQL 表达式'">
+            <a-textarea v-model="formData.eval_sql" :placeholder="evalSqlPlaceholder" :auto-size="{ minRows: 3, maxRows: 8 }" />
+          </a-form-item>
+          <a-row :gutter="16">
+            <a-col v-if="selectedSourceType === 'clickhouse'" :span="6">
+              <a-form-item field="threshold" label="阈值">
+                <a-input-number v-model="formData.threshold" :min="1" hide-button style="width: 100%" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="selectedSourceType === 'clickhouse' ? 6 : 8">
+              <a-form-item field="interval_minutes" label="窗口(分钟)">
+                <a-input-number v-model="formData.interval_minutes" :min="1" hide-button style="width: 100%" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="selectedSourceType === 'clickhouse' ? 6 : 8">
+              <a-form-item field="for_rounds" label="防抖轮次">
+                <a-input-number v-model="formData.for_rounds" :min="1" hide-button style="width: 100%" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="selectedSourceType === 'clickhouse' ? 6 : 8">
+              <a-form-item field="detail_limit" label="明细上限">
+                <a-input-number v-model="formData.detail_limit" :min="1" hide-button style="width: 100%" />
+              </a-form-item>
+            </a-col>
+          </a-row>
+        </template>
+        <p v-else class="no-source-hint">未绑定数据源：webhook-only 规则，事件由来源系统直接回报，无需评估配置。</p>
         <a-form-item field="grafana_url" label="Grafana 跳转地址">
           <a-input v-model="formData.grafana_url" placeholder="可选，卡片内毫秒级跳转" />
         </a-form-item>
@@ -165,7 +161,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconDelete, IconRefresh } from '@arco-design/web-vue/es/icon'
 import * as alertApi from '../../api/alert'
@@ -190,6 +186,17 @@ async function fetchSources() {
   try { sources.value = (await alertApi.getMonitoringSources()).data } catch { /* ignore */ }
 }
 
+// 绑定数据源的类型：决定评估输入形态（clickhouse=SQL 契约；victoria/prometheus=PromQL）与阈值是否参与
+const selectedSourceType = computed(() =>
+  sources.value.find(s => s.id === formData.source_id)?.type ?? null,
+)
+
+const evalSqlPlaceholder = computed(() =>
+  selectedSourceType.value === 'clickhouse'
+    ? '契约：单行两列 error_count + log_details；窗口占位 {window_minutes}'
+    : '表达式自带比较（如 up == 0、rate(err[5m]) > 10），查询结果非空即触发',
+)
+
 // 二期：规则级绑定的通知渠道
 const channels = ref<INotifyChannel[]>([])
 
@@ -203,7 +210,7 @@ async function fetchChannels() {
 }
 
 const columns = [
-  { title: '来源', slotName: 'source', width: 110 },
+  { title: '告警来源', slotName: 'source', width: 110 },
   { title: '规则', slotName: 'rule', width: 220 },
   { title: '数据源', slotName: 'source_ref', width: 110 },
   { title: '处理组', slotName: 'group', width: 130 },
@@ -234,7 +241,7 @@ const formVisible = ref(false)
 const formLoading = ref(false)
 const editingId = ref<number | null>(null)
 const formData = reactive({
-  source: 'ck-log-alert', code: '', name: '',
+  code: '', name: '',
   group_id: undefined as number | undefined, stale_minutes: 5, default_severity: 2,
   notify_enabled: true, enabled: true,
   // 规则级通知渠道；空 = 通知由执行器默认处理
@@ -257,7 +264,6 @@ function buildLabels(): Record<string, string> {
 function openRuleModal(rule: IAlertRule | null) {
   editingId.value = rule?.id ?? null
   Object.assign(formData, {
-    source: rule?.source ?? 'ck-log-alert',
     code: rule?.code ?? '',
     name: rule?.name ?? '',
     group_id: rule?.group_id ?? undefined,
@@ -283,7 +289,7 @@ function openRuleModal(rule: IAlertRule | null) {
 }
 
 async function handleSubmit() {
-  if (!formData.source.trim() || !formData.code.trim()) { Message.warning('来源与规则 code 必填'); return }
+  if (!formData.code.trim()) { Message.warning('规则 code 必填'); return }
   // 飞书卡片模板：可选 JSON，非法拦截
   let cardTemplate: Record<string, unknown> | null = null
   if (formData.cardTemplateText.trim()) {
@@ -313,7 +319,8 @@ async function handleSubmit() {
       Message.success('已更新')
     } else {
       await alertApi.createAlertRule({
-        source: formData.source.trim(), code: formData.code.trim(),
+        // 夜莺退役后规则为平台原生，来源固定 bingops
+        source: 'bingops', code: formData.code.trim(),
         name: formData.name || null,
         group_id: formData.group_id ?? null,
         stale_minutes: formData.stale_minutes,
