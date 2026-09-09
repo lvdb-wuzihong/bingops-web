@@ -59,10 +59,12 @@
           <template #icon><icon-cloud-download /></template>
           部署管理
         </a-menu-item>
-        <a-menu-item key="Monitor">
+        <a-sub-menu key="Monitor">
           <template #icon><icon-bar-chart /></template>
-          监控日志
-        </a-menu-item>
+          <template #title>监控日志</template>
+          <a-menu-item key="AlertEventList">告警事件</a-menu-item>
+          <a-menu-item key="AlertRuleList">规则映射</a-menu-item>
+        </a-sub-menu>
         <a-sub-menu key="Tickets">
           <template #icon><icon-file /></template>
           <template #title>工单系统</template>

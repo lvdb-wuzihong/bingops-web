@@ -112,8 +112,22 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'monitor',
         name: 'Monitor',
-        component: () => import('../views/monitor/MonitorView.vue'),
+        redirect: '/monitor/alerts',
         meta: { title: '监控日志', icon: 'icon-bar-chart' },
+        children: [
+          {
+            path: 'alerts',
+            name: 'AlertEventList',
+            component: () => import('../views/monitor/AlertEventList.vue'),
+            meta: { title: '告警事件' },
+          },
+          {
+            path: 'rules',
+            name: 'AlertRuleList',
+            component: () => import('../views/monitor/AlertRuleList.vue'),
+            meta: { title: '规则映射' },
+          },
+        ],
       },
       {
         path: 'tickets',
