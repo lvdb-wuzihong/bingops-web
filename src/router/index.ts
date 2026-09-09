@@ -113,7 +113,7 @@ const routes: RouteRecordRaw[] = [
         path: 'monitor',
         name: 'Monitor',
         redirect: '/monitor/alerts',
-        meta: { title: '监控日志', icon: 'icon-bar-chart' },
+        meta: { title: '告警中心', icon: 'icon-notification' },
         children: [
           {
             path: 'alerts',

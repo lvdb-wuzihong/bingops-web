@@ -15,6 +15,7 @@
 
       <a-alert class="rule-tip" type="info">
         规则映射决定告警的开单去向：code 须与执行器侧 rule_code 对齐（人工纪律）；绑定数据源与评估 SQL 后由执行器按节拍评估（二期分发）；未配置映射的规则事件照常落库，但跳过自动开单。
+        <br />注意：告警↔工单联动受全局总闸 BINGOPS_ALERT_TICKET_ENABLED 控制，默认关闭（告警只落事件，不创建/流转工单）；开启后仍受下方「自动开单」细粒度控制。
       </a-alert>
 
       <a-table :data="rules" :loading="loading" :columns="columns" :pagination="false" row-key="id" size="small">
@@ -98,6 +99,9 @@
                 <a-checkbox v-model="formData.notify_enabled">自动开单</a-checkbox>
                 <a-checkbox v-model="formData.enabled">启用</a-checkbox>
               </a-space>
+              <template #extra>
+                <span class="switch-tip">「自动开单」仅在服务端总闸开启后生效</span>
+              </template>
             </a-form-item>
           </a-col>
         </a-row>
@@ -355,6 +359,7 @@ onMounted(() => {
 .rule-code { font-weight: 500; color: $text-primary; }
 .rule-name { font-size: $font-size-xs; color: $text-secondary; }
 .no-source { font-size: $font-size-xs; color: $text-disabled; }
+.switch-tip { font-size: $font-size-xs; color: $text-secondary; }
 .ch-name { font-size: $font-size-xs; color: $text-secondary; }
 .label-editor {
   display: flex; flex-direction: column; gap: $spacing-xs; width: 100%;
