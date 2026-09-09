@@ -30,7 +30,8 @@
           <div v-if="record.database_name" class="src-region">db: {{ record.database_name }}</div>
         </template>
         <template #credential="{ record }">
-          <span class="cred-ref">{{ record.username ? `${record.username} / ` : '' }}{{ record.password_ref }}</span>
+          <a-tag v-if="record.password_ref === 'NO_AUTH'" size="small" color="gray">无认证（NO_AUTH）</a-tag>
+          <span v-else class="cred-ref">{{ record.username ? `${record.username} / ` : '' }}{{ record.password_ref }}</span>
         </template>
         <template #enabled="{ record }">
           <a-tag size="small" :color="record.enabled ? 'green' : 'gray'">{{ record.enabled ? '启用' : '停用' }}</a-tag>
@@ -90,7 +91,13 @@
           </a-col>
         </a-row>
         <a-form-item field="password_ref" label="凭据引用名（password_ref）" required>
-          <a-input v-model="formData.password_ref" placeholder="如 prod-ch-readonly；真凭据在执行器侧 env，平台不落密码" />
+          <a-input v-model="formData.password_ref" :disabled="noAuth" placeholder="执行器侧 env 变量名，如 prod-ch-readonly" />
+          <template #extra>
+            <span class="cred-tip">取值约定：执行器以 os.environ[引用名] 解析真凭据（缺失则 fail fast）；仅内网/白名单可达的无认证数据源勾选下方「无认证」</span>
+          </template>
+        </a-form-item>
+        <a-form-item label="认证">
+          <a-checkbox v-model="noAuth">无认证（NO_AUTH，连接时不带凭据；加认证后改为 env 变量名）</a-checkbox>
         </a-form-item>
         <a-row :gutter="16">
           <a-col :span="8">
@@ -118,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconRefresh } from '@arco-design/web-vue/es/icon'
 import * as alertApi from '../../api/alert'
@@ -158,6 +165,14 @@ const formData = reactive({
   region: '', vpc: '', enabled: true,
 })
 
+// 凭据取值约定（monitoring-design §12）：NO_AUTH = 无认证，执行器连接时不带凭据；
+// 其余值 = 执行器侧 env 变量名（os.environ[ref] 解析，缺失 fail fast）
+const noAuth = ref(false)
+watch(noAuth, (v) => {
+  if (v) formData.password_ref = 'NO_AUTH'
+  else if (formData.password_ref === 'NO_AUTH') formData.password_ref = ''
+})
+
 function openSourceModal(src: IMonitoringSource | null) {
   editingId.value = src?.id ?? null
   Object.assign(formData, {
@@ -173,6 +188,7 @@ function openSourceModal(src: IMonitoringSource | null) {
     vpc: src?.vpc ?? '',
     enabled: src?.enabled ?? true,
   })
+  noAuth.value = src?.password_ref === 'NO_AUTH'
   formVisible.value = true
 }
 
@@ -226,4 +242,5 @@ onMounted(fetchSources)
 .src-region { font-size: $font-size-xs; color: $text-secondary; }
 .endpoint { font-family: monospace; }
 .cred-ref { font-family: monospace; }
+.cred-tip { font-size: $font-size-xs; color: $text-secondary; }
 </style>
