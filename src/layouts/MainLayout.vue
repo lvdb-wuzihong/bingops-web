@@ -63,6 +63,8 @@
           <template #icon><icon-bar-chart /></template>
           <template #title>监控日志</template>
           <a-menu-item key="AlertEventList">告警事件</a-menu-item>
+          <a-menu-item key="MonitoringSourceList">数据源管理</a-menu-item>
+          <a-menu-item key="NotifyChannelList">通知渠道</a-menu-item>
           <a-menu-item key="AlertRuleList">规则映射</a-menu-item>
         </a-sub-menu>
         <a-sub-menu key="Tickets">

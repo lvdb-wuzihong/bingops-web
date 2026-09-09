@@ -67,7 +67,7 @@ export function getAlertStats(params?: { group_by?: string; since?: string; unti
   return request.get<IAlertStatsSummary>('/api/v1/alerts/stats/summary', { params })
 }
 
-// ========== 规则映射（rule_code → 处理组 / stale 窗口 / 开单开关） ==========
+// ========== 规则映射（二期起为分发源：绑定数据源 + 评估契约字段） ==========
 
 export interface IAlertRule {
   id: number
@@ -80,6 +80,20 @@ export interface IAlertRule {
   static_labels: Record<string, string>
   notify_enabled: boolean
   enabled: boolean
+  // 绑定通知渠道；空 = 通知由执行器默认处理
+  notify_channel_id: number | null
+  // ── 二期：评估契约字段 ──
+  // 绑定监控数据源；空 = 仅事件记录不开单的 webhook-only 规则
+  source_id: number | null
+  // 评估 SQL 契约：单行两列 error_count + log_details；含 {window_minutes} 占位
+  eval_sql: string | null
+  threshold: number
+  interval_minutes: number
+  // 连续 M 轮达标才报 firing（防抖）
+  for_rounds: number
+  detail_limit: number
+  grafana_url: string | null
+  feishu_card_template: Record<string, unknown> | null
   created_at: string
   updated_at: string
 }
@@ -94,6 +108,15 @@ export interface IAlertRuleCreate {
   static_labels?: Record<string, string>
   notify_enabled?: boolean
   enabled?: boolean
+  notify_channel_id?: number | null
+  source_id?: number | null
+  eval_sql?: string | null
+  threshold?: number
+  interval_minutes?: number
+  for_rounds?: number
+  detail_limit?: number
+  grafana_url?: string | null
+  feishu_card_template?: Record<string, unknown> | null
 }
 
 export interface IAlertRuleUpdate {
@@ -104,6 +127,15 @@ export interface IAlertRuleUpdate {
   static_labels?: Record<string, string> | null
   notify_enabled?: boolean | null
   enabled?: boolean | null
+  notify_channel_id?: number | null
+  source_id?: number | null
+  eval_sql?: string | null
+  threshold?: number | null
+  interval_minutes?: number | null
+  for_rounds?: number | null
+  detail_limit?: number | null
+  grafana_url?: string | null
+  feishu_card_template?: Record<string, unknown> | null
 }
 
 export function getAlertRules() {
@@ -120,4 +152,120 @@ export function updateAlertRule(id: number, data: IAlertRuleUpdate) {
 
 export function deleteAlertRule(id: number) {
   return request.delete<null>(`/api/v1/alerts/rules/${id}`)
+}
+
+// ========== 监控数据源（多套 CH/VM；凭据红线：只存 password_ref 引用名） ======
+
+// clickhouse | victoria | prometheus
+export type MonitoringSourceType = 'clickhouse' | 'victoria' | 'prometheus'
+
+export interface IMonitoringSource {
+  id: number
+  name: string
+  type: MonitoringSourceType
+  host: string
+  port: number
+  database_name: string | null
+  username: string | null
+  // 凭据引用名（真凭据在执行器侧 env；平台不落密码）
+  password_ref: string
+  secure: boolean
+  region: string | null
+  vpc: string | null
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface IMonitoringSourceCreate {
+  name: string
+  type: MonitoringSourceType
+  host: string
+  port: number
+  database_name?: string | null
+  username?: string | null
+  password_ref: string
+  secure?: boolean
+  region?: string | null
+  vpc?: string | null
+  enabled?: boolean
+}
+
+export interface IMonitoringSourceUpdate {
+  host?: string
+  port?: number
+  database_name?: string | null
+  username?: string | null
+  password_ref?: string
+  secure?: boolean
+  region?: string | null
+  vpc?: string | null
+  enabled?: boolean
+}
+
+export function getMonitoringSources() {
+  return request.get<IMonitoringSource[]>('/api/v1/monitoring-sources')
+}
+
+export function createMonitoringSource(data: IMonitoringSourceCreate) {
+  return request.post<IMonitoringSource>('/api/v1/monitoring-sources', data)
+}
+
+export function updateMonitoringSource(id: number, data: IMonitoringSourceUpdate) {
+  return request.put<IMonitoringSource>(`/api/v1/monitoring-sources/${id}`, data)
+}
+
+// 有启用规则绑定时后端阻断（避免孤儿规则）
+export function deleteMonitoringSource(id: number) {
+  return request.delete<null>(`/api/v1/monitoring-sources/${id}`)
+}
+
+// ========== 通知渠道（告警媒介登记；发送动作在执行器，平台只登记配置并随分发下发） ===
+
+// feishu_webhook 预置；dingtalk | wecom 为扩展位
+export type NotifyChannelType = 'feishu_webhook'
+
+export interface INotifyChannel {
+  id: number
+  name: string
+  type: NotifyChannelType
+  // webhook URL 凭据引用名（URL 即 secret，平台不落真地址）
+  secret_ref: string
+  // 非敏感参数（@手机号列表等）
+  extra: Record<string, unknown>
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface INotifyChannelCreate {
+  name: string
+  type: NotifyChannelType
+  secret_ref: string
+  extra?: Record<string, unknown>
+  enabled?: boolean
+}
+
+export interface INotifyChannelUpdate {
+  type?: NotifyChannelType | null
+  secret_ref?: string
+  extra?: Record<string, unknown> | null
+  enabled?: boolean | null
+}
+
+export function getNotifyChannels() {
+  return request.get<INotifyChannel[]>('/api/v1/notify-channels')
+}
+
+export function createNotifyChannel(data: INotifyChannelCreate) {
+  return request.post<INotifyChannel>('/api/v1/notify-channels', data)
+}
+
+export function updateNotifyChannel(id: number, data: INotifyChannelUpdate) {
+  return request.put<INotifyChannel>(`/api/v1/notify-channels/${id}`, data)
+}
+
+// 有规则绑定时后端阻断（避免规则通知悬空）
+export function deleteNotifyChannel(id: number) {
+  return request.delete<null>(`/api/v1/notify-channels/${id}`)
 }

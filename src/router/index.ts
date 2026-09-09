@@ -122,6 +122,18 @@ const routes: RouteRecordRaw[] = [
             meta: { title: '告警事件' },
           },
           {
+            path: 'sources',
+            name: 'MonitoringSourceList',
+            component: () => import('../views/monitor/MonitoringSourceList.vue'),
+            meta: { title: '数据源管理' },
+          },
+          {
+            path: 'notify-channels',
+            name: 'NotifyChannelList',
+            component: () => import('../views/monitor/NotifyChannelList.vue'),
+            meta: { title: '通知渠道' },
+          },
+          {
             path: 'rules',
             name: 'AlertRuleList',
             component: () => import('../views/monitor/AlertRuleList.vue'),

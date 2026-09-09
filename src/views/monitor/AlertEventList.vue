@@ -104,6 +104,12 @@
             <span v-if="!labelCount(record.labels)">-</span>
           </a-space>
         </template>
+        <template #resource_ids="{ record }">
+          <a-space wrap size="mini">
+            <a-link v-for="rid in record.resource_ids" :key="rid" @click="$router.push({ name: 'ResourceDetail', params: { id: String(rid) } })">#{{ rid }}</a-link>
+          </a-space>
+          <span v-if="!record.resource_ids?.length">-</span>
+        </template>
         <template #ticket_id="{ record }">
           <span v-if="record.ticket_id" class="ticket-id">#{{ record.ticket_id }}</span>
           <span v-else>-</span>
@@ -159,6 +165,7 @@ const columns = [
   { title: '持续/恢复', slotName: 'duration', width: 100 },
   { title: '计数', slotName: 'total_count', width: 66 },
   { title: 'labels', slotName: 'labels', width: 200 },
+  { title: '关联资源', slotName: 'resource_ids', width: 100 },
   { title: '工单', slotName: 'ticket_id', width: 70 },
   { title: '明细', slotName: 'details', ellipsis: true, tooltip: true },
 ]
