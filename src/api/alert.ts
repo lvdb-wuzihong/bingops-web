@@ -170,8 +170,6 @@ export interface IMonitoringSource {
   // 凭据引用名（真凭据在执行器侧 env；平台不落密码）
   password_ref: string
   secure: boolean
-  region: string | null
-  vpc: string | null
   enabled: boolean
   created_at: string
   updated_at: string
@@ -186,8 +184,6 @@ export interface IMonitoringSourceCreate {
   username?: string | null
   password_ref: string
   secure?: boolean
-  region?: string | null
-  vpc?: string | null
   enabled?: boolean
 }
 
@@ -198,8 +194,6 @@ export interface IMonitoringSourceUpdate {
   username?: string | null
   password_ref?: string
   secure?: boolean
-  region?: string | null
-  vpc?: string | null
   enabled?: boolean
 }
 

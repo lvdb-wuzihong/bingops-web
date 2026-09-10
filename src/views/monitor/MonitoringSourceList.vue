@@ -20,7 +20,6 @@
       <a-table :data="sources" :loading="loading" :columns="columns" :pagination="false" row-key="id" size="small">
         <template #name="{ record }">
           <span class="src-name">{{ record.name }}</span>
-          <div class="src-region">{{ record.region || '-' }}<template v-if="record.vpc"> · {{ record.vpc }}</template></div>
         </template>
         <template #type="{ record }">
           <a-tag size="small" :color="typeColor(record.type)">{{ record.type }}</a-tag>
@@ -99,26 +98,12 @@
         <a-form-item label="认证">
           <a-checkbox v-model="noAuth">无认证（NO_AUTH，连接时不带凭据；加认证后改为 env 变量名）</a-checkbox>
         </a-form-item>
-        <a-row :gutter="16">
-          <a-col :span="8">
-            <a-form-item field="region" label="环境/区域">
-              <a-input v-model="formData.region" placeholder="可选" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item field="vpc" label="VPC">
-              <a-input v-model="formData.vpc" placeholder="可选，VPC provider_id" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="选项">
-              <a-space size="medium">
-                <a-checkbox v-model="formData.secure">TLS</a-checkbox>
-                <a-checkbox v-model="formData.enabled">启用</a-checkbox>
-              </a-space>
-            </a-form-item>
-          </a-col>
-        </a-row>
+        <a-form-item label="认证与状态">
+          <a-space size="medium">
+            <a-checkbox v-model="formData.secure">TLS</a-checkbox>
+            <a-checkbox v-model="formData.enabled">启用</a-checkbox>
+          </a-space>
+        </a-form-item>
       </a-form>
     </a-modal>
   </div>
@@ -161,8 +146,7 @@ const formLoading = ref(false)
 const editingId = ref<number | null>(null)
 const formData = reactive({
   name: '', type: 'clickhouse' as MonitoringSourceType, host: '', port: 9000,
-  database_name: '', username: '', password_ref: '', secure: false,
-  region: '', vpc: '', enabled: true,
+  database_name: '', username: '', password_ref: '', secure: false, enabled: true,
 })
 
 // 凭据取值约定（monitoring-design §12）：NO_AUTH = 无认证，执行器连接时不带凭据；
@@ -184,8 +168,6 @@ function openSourceModal(src: IMonitoringSource | null) {
     username: src?.username ?? '',
     password_ref: src?.password_ref ?? '',
     secure: src?.secure ?? false,
-    region: src?.region ?? '',
-    vpc: src?.vpc ?? '',
     enabled: src?.enabled ?? true,
   })
   noAuth.value = src?.password_ref === 'NO_AUTH'
@@ -204,8 +186,7 @@ async function handleSubmit() {
         database_name: formData.database_name || null,
         username: formData.username || null,
         password_ref: formData.password_ref.trim(),
-        secure: formData.secure, region: formData.region || null,
-        vpc: formData.vpc || null, enabled: formData.enabled,
+        secure: formData.secure, enabled: formData.enabled,
       })
       Message.success('已更新')
     } else {
@@ -215,8 +196,7 @@ async function handleSubmit() {
         database_name: formData.database_name || null,
         username: formData.username || null,
         password_ref: formData.password_ref.trim(),
-        secure: formData.secure, region: formData.region || null,
-        vpc: formData.vpc || null, enabled: formData.enabled,
+        secure: formData.secure, enabled: formData.enabled,
       })
       Message.success('已注册')
     }
