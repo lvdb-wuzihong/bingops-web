@@ -114,22 +114,27 @@
             <a-textarea v-model="formData.eval_sql" :placeholder="evalSqlPlaceholder" :auto-size="{ minRows: 3, maxRows: 8 }" />
           </a-form-item>
           <a-row :gutter="16">
-            <a-col v-if="selectedSourceType === 'clickhouse'" :span="6">
+            <a-col v-if="selectedSourceType === 'clickhouse'" :span="4">
               <a-form-item field="threshold" label="阈值">
                 <a-input-number v-model="formData.threshold" :min="1" hide-button style="width: 100%" />
               </a-form-item>
             </a-col>
-            <a-col :span="selectedSourceType === 'clickhouse' ? 6 : 8">
-              <a-form-item field="interval_minutes" label="窗口(分钟)">
+            <a-col :span="5">
+              <a-form-item field="interval_minutes" label="查询窗口(分钟)">
                 <a-input-number v-model="formData.interval_minutes" :min="1" hide-button style="width: 100%" />
               </a-form-item>
             </a-col>
-            <a-col :span="selectedSourceType === 'clickhouse' ? 6 : 8">
+            <a-col :span="5">
+              <a-form-item field="eval_interval_seconds" label="扫描间隔(秒)">
+                <a-input-number v-model="formData.eval_interval_seconds" :min="10" hide-button style="width: 100%" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="selectedSourceType === 'clickhouse' ? 5 : 6">
               <a-form-item field="for_rounds" label="防抖轮次">
                 <a-input-number v-model="formData.for_rounds" :min="1" hide-button style="width: 100%" />
               </a-form-item>
             </a-col>
-            <a-col :span="selectedSourceType === 'clickhouse' ? 6 : 8">
+            <a-col :span="selectedSourceType === 'clickhouse' ? 5 : 6">
               <a-form-item field="detail_limit" label="明细上限">
                 <a-input-number v-model="formData.detail_limit" :min="1" hide-button style="width: 100%" />
               </a-form-item>
@@ -248,7 +253,7 @@ const formData = reactive({
   notify_channel_id: undefined as number | undefined,
   // ── 二期：评估契约 ──
   source_id: undefined as number | undefined, eval_sql: '',
-  threshold: 1, interval_minutes: 1, for_rounds: 1, detail_limit: 10,
+  threshold: 1, interval_minutes: 1, eval_interval_seconds: 60, for_rounds: 1, detail_limit: 10,
   grafana_url: '', cardTemplateText: '',
 })
 const labelRows = ref<Array<{ k: string; v: string }>>([])
@@ -280,6 +285,7 @@ function openRuleModal(rule: IAlertRule | null) {
     eval_sql: rule?.eval_sql ?? '',
     threshold: rule?.threshold ?? 1,
     interval_minutes: rule?.interval_minutes ?? 1,
+    eval_interval_seconds: rule?.eval_interval_seconds ?? 60,
     for_rounds: rule?.for_rounds ?? 1,
     detail_limit: rule?.detail_limit ?? 10,
     grafana_url: rule?.grafana_url ?? '',
@@ -311,6 +317,7 @@ async function handleSubmit() {
         eval_sql: formData.eval_sql || null,
         threshold: formData.threshold,
         interval_minutes: formData.interval_minutes,
+        eval_interval_seconds: formData.eval_interval_seconds,
         for_rounds: formData.for_rounds,
         detail_limit: formData.detail_limit,
         grafana_url: formData.grafana_url || null,
@@ -333,6 +340,7 @@ async function handleSubmit() {
         eval_sql: formData.eval_sql || null,
         threshold: formData.threshold,
         interval_minutes: formData.interval_minutes,
+        eval_interval_seconds: formData.eval_interval_seconds,
         for_rounds: formData.for_rounds,
         detail_limit: formData.detail_limit,
         grafana_url: formData.grafana_url || null,

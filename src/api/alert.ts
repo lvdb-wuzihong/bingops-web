@@ -88,7 +88,10 @@ export interface IAlertRule {
   // 评估 SQL 契约：单行两列 error_count + log_details；含 {window_minutes} 占位
   eval_sql: string | null
   threshold: number
+  // 查询窗口（分钟）：评估 SQL 里的 {window_minutes} 占位
   interval_minutes: number
+  // 规则级扫描间隔（秒）：执行器按它调度本规则，与查询窗口独立
+  eval_interval_seconds: number
   // 连续 M 轮达标才报 firing（防抖）
   for_rounds: number
   detail_limit: number
@@ -113,6 +116,7 @@ export interface IAlertRuleCreate {
   eval_sql?: string | null
   threshold?: number
   interval_minutes?: number
+  eval_interval_seconds?: number
   for_rounds?: number
   detail_limit?: number
   grafana_url?: string | null
@@ -132,6 +136,7 @@ export interface IAlertRuleUpdate {
   eval_sql?: string | null
   threshold?: number | null
   interval_minutes?: number | null
+  eval_interval_seconds?: number | null
   for_rounds?: number | null
   detail_limit?: number | null
   grafana_url?: string | null
