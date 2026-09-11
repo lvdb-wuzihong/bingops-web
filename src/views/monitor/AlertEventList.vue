@@ -12,6 +12,11 @@
           <a-select v-model="filters.source" placeholder="来源" allow-clear style="width: 140px" @change="handleSearch">
             <a-option value="ck-log-alert">ck-log-alert</a-option>
             <a-option value="n9e">夜莺 n9e</a-option>
+            <a-option value="bingops">平台原生 bingops</a-option>
+          </a-select>
+          <a-select v-model="filters.rule_kind" placeholder="类型" allow-clear style="width: 110px" @change="handleSearch">
+            <a-option value="log">事件型（log）</a-option>
+            <a-option value="metric">状态型（metric）</a-option>
           </a-select>
           <a-input v-model="filters.rule_code" placeholder="规则 code" allow-clear style="width: 160px" @change="handleSearch" />
           <a-range-picker v-model="dateRange" value-format="YYYY-MM-DD" style="width: 240px" @change="handleSearch" />
@@ -21,27 +26,34 @@
         </a-space>
       </div>
 
-      <!-- KPI 卡 -->
+      <!-- KPI 卡（双模型：metric 看 firing/resolved/MTTR；log 看 recorded 流水） -->
       <a-row :gutter="12" class="kpi-row">
-        <a-col :span="6">
+        <a-col :span="5">
           <div class="kpi-card">
             <span class="kpi-label">当前活跃 firing</span>
             <span class="kpi-value" :class="{ 'kpi-danger': (summary?.active_firing_total ?? 0) > 0 }">{{ summary?.active_firing_total ?? '-' }}</span>
           </div>
         </a-col>
-        <a-col :span="6">
+        <a-col :span="5">
           <div class="kpi-card">
             <span class="kpi-label">firing 事件</span>
             <span class="kpi-value">{{ sumCount('firing_count') }}</span>
           </div>
         </a-col>
-        <a-col :span="6">
+        <a-col :span="5">
           <div class="kpi-card">
             <span class="kpi-label">resolved 事件</span>
             <span class="kpi-value">{{ sumCount('resolved_count') }}</span>
           </div>
         </a-col>
-        <a-col :span="6">
+        <a-col :span="4">
+          <div class="kpi-card">
+            <span class="kpi-label">log 流水</span>
+            <span class="kpi-value">{{ sumCount('recorded_count') }}</span>
+            <span class="kpi-sub">命中 {{ sumCount('recorded_error_total') }} 次</span>
+          </div>
+        </a-col>
+        <a-col :span="5">
           <div class="kpi-card">
             <span class="kpi-label">平均恢复时长</span>
             <span class="kpi-value kpi-sm">{{ summary?.avg_resolve_seconds != null ? fmtDuration(summary.avg_resolve_seconds) : '-' }}</span>
@@ -83,6 +95,10 @@
           <a-tooltip :content="resolveReasonText(record)">
             <a-tag size="small" :color="statusMap[record.status]?.color || 'gray'">{{ statusMap[record.status]?.text || record.status }}</a-tag>
           </a-tooltip>
+        </template>
+        <template #rule_kind="{ record }">
+          <a-tag v-if="record.rule_kind" size="small" :color="kindMap[record.rule_kind]?.color || 'gray'">{{ kindMap[record.rule_kind]?.text || record.rule_kind }}</a-tag>
+          <span v-else>-</span>
         </template>
         <template #rule="{ record }">
           <span class="rule-code">{{ record.rule_code }}</span>
@@ -147,18 +163,25 @@ const statusMap: Record<string, { text: string; color: string }> = {
   firing: { text: '触发中', color: 'red' },
   resolved: { text: '已恢复', color: 'green' },
   error: { text: '回报异常', color: 'orange' },
+  // 双模型：log 规则每轮命中记一条流水，无状态机不合并
+  recorded: { text: '流水记录', color: 'gray' },
+}
+const kindMap: Record<string, { text: string; color: string }> = {
+  log: { text: '事件型', color: 'cyan' },
+  metric: { text: '状态型', color: 'purple' },
 }
 
 const loading = ref(false)
 const events = ref<IAlertEvent[]>([])
 const summary = ref<IAlertStatsSummary | null>(null)
-const filters = reactive({ status: undefined as string | undefined, source: undefined as string | undefined, rule_code: '' })
+const filters = reactive({ status: undefined as string | undefined, source: undefined as string | undefined, rule_code: '', rule_kind: undefined as string | undefined })
 const dateRange = ref<[string, string] | undefined>()
 const pagination = reactive({ current: 1, pageSize: 20, total: 0, showTotal: true, showPageSize: true })
 
 const columns = [
   { title: '级别', slotName: 'severity', width: 70 },
   { title: '状态', slotName: 'status', width: 88 },
+  { title: '类型', slotName: 'rule_kind', width: 76 },
   { title: '来源', dataIndex: 'source', width: 110 },
   { title: '规则', slotName: 'rule', width: 190 },
   { title: '首次触发', slotName: 'first_seen', width: 150 },
@@ -190,6 +213,7 @@ async function fetchEvents() {
     const res = await alertApi.getAlertEvents({
       status: filters.status, source: filters.source,
       rule_code: filters.rule_code || undefined,
+      rule_kind: filters.rule_kind,
       ...timeRangeParams(),
       page: pagination.current, page_size: pagination.pageSize,
     })
@@ -200,7 +224,7 @@ async function fetchEvents() {
 
 async function fetchSummary(groupBy: 'day' | 'source'): Promise<IAlertStatsSummary | null> {
   try {
-    return (await alertApi.getAlertStats({ group_by: groupBy, ...timeRangeParams() })).data
+    return (await alertApi.getAlertStats({ group_by: groupBy, rule_kind: filters.rule_kind, ...timeRangeParams() })).data
   } catch { return null }
 }
 
@@ -213,7 +237,7 @@ async function fetchAll() {
   renderSourceChart(bySource)
 }
 
-function sumCount(field: 'firing_count' | 'resolved_count' | 'error_count'): number {
+function sumCount(field: 'firing_count' | 'resolved_count' | 'error_count' | 'recorded_count' | 'recorded_error_total'): number {
   return (summary.value?.groups ?? []).reduce((acc, g) => acc + (g[field] || 0), 0)
 }
 
@@ -280,7 +304,7 @@ function renderTrendChart(byDay: IAlertStatsSummary | null) {
   const groups = [...(byDay?.groups ?? [])].sort((a, b) => a.key.localeCompare(b.key))
   trendChart.setOption({
     tooltip: { trigger: 'axis', backgroundColor: '#ffffff', borderColor: '#d6e4ff', textStyle: { color: '#1d39c4' } },
-    legend: { data: ['firing', 'resolved', 'error'], bottom: 0, textStyle: { color: '#597ef7' } },
+    legend: { data: ['firing', 'resolved', 'error', 'recorded'], bottom: 0, textStyle: { color: '#597ef7' } },
     grid: { left: 40, right: 16, top: 20, bottom: 46 },
     xAxis: { type: 'category', data: groups.map(g => g.key), axisLabel: { color: '#4e5969' } },
     yAxis: { type: 'value', minInterval: 1, axisLabel: { color: '#4e5969' } },
@@ -288,6 +312,7 @@ function renderTrendChart(byDay: IAlertStatsSummary | null) {
       { name: 'firing', type: 'bar', stack: 'total', data: groups.map(g => g.firing_count), itemStyle: { color: STATUS_COLORS.firing } },
       { name: 'resolved', type: 'bar', stack: 'total', data: groups.map(g => g.resolved_count), itemStyle: { color: STATUS_COLORS.resolved } },
       { name: 'error', type: 'bar', stack: 'total', data: groups.map(g => g.error_count), itemStyle: { color: STATUS_COLORS.error } },
+      { name: 'recorded', type: 'bar', stack: 'total', data: groups.map(g => g.recorded_count), itemStyle: { color: '#86909c' } },
     ],
   })
 }
@@ -336,6 +361,7 @@ onBeforeUnmount(() => {
   display: flex; flex-direction: column; gap: 4px;
 }
 .kpi-label { font-size: $font-size-xs; color: $text-secondary; }
+.kpi-sub { font-size: $font-size-xs; color: $text-secondary; }
 .kpi-value { font-size: 24px; font-weight: 600; color: $text-primary; }
 .kpi-sm { font-size: 18px; }
 .kpi-danger { color: $color-danger; }

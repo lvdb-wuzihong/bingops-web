@@ -3,7 +3,10 @@ import type { IPaginatedData, IPageParams } from '../types/common'
 
 // ========== 告警事件（监控闭环层，契约见 docs/monitoring-design.md） ==========
 
-export type AlertStatus = 'firing' | 'resolved' | 'error'
+export type AlertStatus = 'firing' | 'resolved' | 'error' | 'recorded'
+
+// 告警类型：log（日志/事件型，流水不合并）| metric（指标/状态型，firing 合并续命）；由后端按绑定数据源 type 推导
+export type AlertRuleKind = 'log' | 'metric'
 
 export interface IAlertEvent {
   id: number
@@ -11,6 +14,8 @@ export interface IAlertEvent {
   rule_code: string
   rule_name: string | null
   status: AlertStatus
+  // 后端按规则绑定数据源 type 推导定型；直报历史事件为 null
+  rule_kind: AlertRuleKind | null
   window_start: string | null
   window_end: string | null
   first_seen_at: string
@@ -24,6 +29,8 @@ export interface IAlertEvent {
   labels: Record<string, string>
   // CMDB 尽力匹配的资源 ID
   resource_ids: number[]
+  // 数据源归属（取自规则绑定的数据源；直报事件为 null）
+  monitoring_source_id: number | null
   // JSONB 黑盒，平台不解析内部结构
   details: unknown
   error: string | null
@@ -38,6 +45,7 @@ export interface IAlertEventQuery extends IPageParams {
   status?: string
   source?: string
   rule_code?: string
+  rule_kind?: string
   since?: string
   until?: string
 }
@@ -53,6 +61,9 @@ export interface IAlertStatsGroup {
   firing_count: number
   resolved_count: number
   error_count: number
+  // log 流水事件条数与错误总次数（仅 rule_kind=log 的事件产生）
+  recorded_count: number
+  recorded_error_total: number
 }
 
 export interface IAlertStatsSummary {
@@ -63,7 +74,7 @@ export interface IAlertStatsSummary {
   avg_resolve_seconds: number | null
 }
 
-export function getAlertStats(params?: { group_by?: string; since?: string; until?: string }) {
+export function getAlertStats(params?: { group_by?: string; rule_kind?: string; since?: string; until?: string }) {
   return request.get<IAlertStatsSummary>('/api/v1/alerts/stats/summary', { params })
 }
 

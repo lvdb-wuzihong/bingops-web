@@ -107,6 +107,11 @@
           <a-select v-model="formData.source_id" placeholder="未绑定 = 仅事件记录（webhook-only 规则）" allow-clear>
             <a-option v-for="s in sources" :key="s.id" :value="s.id">{{ s.name }}（{{ s.type }}）</a-option>
           </a-select>
+          <template #extra>
+            <!-- 双模型：rule_kind 由后端按数据源 type 推导定型，前端不传 -->
+            <span v-if="selectedSourceType === 'clickhouse'" class="switch-tip">ClickHouse 源 → 日志规则（事件型）：每轮命中记一条流水，不合并、不自动开单</span>
+            <span v-else-if="selectedSourceType" class="switch-tip">指标源 → 指标规则（状态型）：firing 合并续命、可恢复，支持自动开单</span>
+          </template>
         </a-form-item>
         <!-- 按数据源类型联动：clickhouse=SQL 契约；victoria/prometheus=PromQL（vector 非空即触发，阈值不参与）；未绑定=评估区折叠 -->
         <template v-if="formData.source_id">
