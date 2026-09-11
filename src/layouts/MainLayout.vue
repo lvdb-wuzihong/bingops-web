@@ -62,7 +62,8 @@
         <a-sub-menu key="Monitor">
           <template #icon><icon-notification /></template>
           <template #title>告警中心</template>
-          <a-menu-item key="AlertEventList">告警事件</a-menu-item>
+          <a-menu-item key="MetricAlertList">指标告警</a-menu-item>
+          <a-menu-item key="LogAlertList">日志告警</a-menu-item>
           <a-menu-item key="MonitoringSourceList">数据源管理</a-menu-item>
           <a-menu-item key="NotifyChannelList">通知渠道</a-menu-item>
           <a-menu-item key="AlertRuleList">告警规则</a-menu-item>

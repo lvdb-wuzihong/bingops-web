@@ -117,9 +117,15 @@ const routes: RouteRecordRaw[] = [
         children: [
           {
             path: 'alerts',
-            name: 'AlertEventList',
-            component: () => import('../views/monitor/AlertEventList.vue'),
-            meta: { title: '告警事件' },
+            name: 'MetricAlertList',
+            component: () => import('../views/monitor/MetricAlertList.vue'),
+            meta: { title: '指标告警' },
+          },
+          {
+            path: 'log-alerts',
+            name: 'LogAlertList',
+            component: () => import('../views/monitor/LogAlertList.vue'),
+            meta: { title: '日志告警' },
           },
           {
             path: 'sources',
