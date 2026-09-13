@@ -534,7 +534,11 @@ watch(() => formData.ticket_type, (t) => {
   const item = catalogItems.value.find(i => i.id === formData.catalog_item_id)
   if (item && item.default_type !== t) formData.catalog_item_id = undefined
 })
-const formRules = { title: [{ required: true, message: '请输入标题' }] }
+const formRules = {
+  title: [{ required: true, message: '请输入标题' }],
+  // 后端已加同类校验（422「服务目录事项必选」），前端前置拦截；消息透传由拦截器统一处理
+  catalog_item_id: [{ required: true, message: '请选择服务目录事项' }],
+}
 
 function handleAdd() {
   editingId.value = null
