@@ -69,10 +69,8 @@
           <div class="pipeline-editor">
             <div v-for="(row, idx) in pipelineRows" :key="idx" class="pipeline-row">
               <a-select v-model="row.env" placeholder="环境" allow-search allow-create style="width: 130px">
-                <a-option value="prod">prod</a-option>
-                <a-option value="staging">staging</a-option>
-                <a-option value="test">test</a-option>
-                <a-option value="dev">dev</a-option>
+                <!-- 选项来自标签定义 env 的允许值（与资源 env 标签值域联动）；标签未配置时可手输 -->
+                <a-option v-for="e in envOptions" :key="e" :value="e">{{ e }}</a-option>
               </a-select>
               <a-input v-model="row.url" placeholder="流水线地址" />
               <a-button type="text" status="danger" @click="pipelineRows.splice(idx, 1)"><template #icon><icon-delete /></template></a-button>
@@ -93,7 +91,7 @@
         <a-button type="primary" :loading="bindLoading" @click="handleBind">绑定资源</a-button>
         <span class="bind-tip">仅支持服务级 CI（workload / 中间件 / 数据库等）</span>
         <a-select v-model="envFilter" placeholder="全部环境" allow-clear style="width: 130px; margin-left: auto">
-          <a-option v-for="opt in envOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-option>
+          <a-option v-for="opt in drawerEnvOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-option>
         </a-select>
       </div>
       <a-table :data="filteredResources" :loading="drawerLoading" :columns="resourceColumns" :pagination="false" row-key="resource_id" size="small">
@@ -133,6 +131,7 @@ import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconEdit, IconDelete, IconApps, IconCopy } from '@arco-design/web-vue/es/icon'
 import * as appApi from '../../api/app'
 import type { IBusinessApp, IAppResource } from '../../api/app'
+import { getTagDefinitions } from '../../api/tag'
 
 const providerMap: Record<string, string> = { aliyun: '阿里云', aws: 'AWS', gcp: '谷歌云', k8s: 'Kubernetes', manual: '手动录入' }
 const statusMap: Record<string, string> = { running: '运行中', ready: '就绪', not_ready: '未就绪', stopped: '已停止', pending: '启动中', failed: '异常', succeeded: '已完成', maintenance: '维护中', unknown: '未知' }
@@ -242,7 +241,7 @@ const resourceColumns = [
 // 环境维度：env 来自资源 env/k8s:env 标签，客户端即时筛选
 const envFilter = ref<string | undefined>()
 
-const envOptions = computed(() => {
+const drawerEnvOptions = computed(() => {
   const envs = [...new Set(appResources.value.map(r => r.env).filter((e): e is string => !!e))].sort()
   const opts = envs.map(e => ({ value: e, label: e }))
   if (appResources.value.some(r => !r.env)) opts.push({ value: '__none__', label: '未设置' })
@@ -300,7 +299,18 @@ async function handleUnbind(resourceId: number) {
   try { await appApi.unbindAppResource(drawerApp.value.id, resourceId); Message.success('解绑成功'); fetchAppResources() } catch { Message.error('解绑失败') }
 }
 
-onMounted(() => fetchData())
+// 流水线环境的候选值 = 标签定义 env 的允许值（与资源 env 标签值域联动，如后端新增 sit 自动出现）
+const envOptions = ref<string[]>([])
+
+async function fetchEnvOptions() {
+  try {
+    const defs = (await getTagDefinitions({ page: 1, page_size: 100 })).data.items
+    const env = defs.find(d => d.tag_key === 'env')
+    envOptions.value = env?.allowed_values ?? []
+  } catch { /* 标签接口失败时保留空候选，允许手输兜底 */ }
+}
+
+onMounted(() => { fetchData(); fetchEnvOptions() })
 </script>
 
 <style scoped lang="scss">
