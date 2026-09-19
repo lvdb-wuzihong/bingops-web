@@ -120,7 +120,7 @@ async function handleLogin() {
 async function handleFeishuLogin() {
   try {
     const res = await getFeishuLoginUrl()
-    window.location.href = res.data.url
+    window.location.href = res.data.authorize_url
   } catch {
     Message.error('获取飞书授权链接失败')
   }

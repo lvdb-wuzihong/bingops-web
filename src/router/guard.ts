@@ -7,6 +7,12 @@ export function setupRouterGuard(router: Router) {
   router.beforeEach(async (to, _from, next) => {
     const userStore = useUserStore()
 
+    // 飞书回调页始终放行：它是换取新 token 的落地页，任何登录态下都要执行换发逻辑
+    if (to.path === '/auth/feishu/callback') {
+      next()
+      return
+    }
+
     // 已登录
     if (userStore.isLoggedIn) {
       // 访问登录页 -> 回跳 redirect（与登录页 safeRedirect 同规则）或首页

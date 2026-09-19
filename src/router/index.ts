@@ -13,6 +13,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('../views/auth/LoginView.vue'),
         meta: { title: '登录', hidden: true },
       },
+      {
+        path: 'feishu/callback',
+        name: 'FeishuCallback',
+        component: () => import('../views/auth/FeishuCallbackView.vue'),
+        meta: { title: '飞书登录', hidden: true },
+      },
     ],
   },
   {

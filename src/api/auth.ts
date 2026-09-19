@@ -26,9 +26,9 @@ export function changePassword(data: IChangePasswordRequest) {
   return request.post<null>('/api/v1/auth/change-password', data)
 }
 
-// 获取飞书授权页 URL
+// 获取飞书授权页 URL（后端返回 { authorize_url }，redirect_uri 由后端配置指向 /auth/feishu/callback）
 export function getFeishuLoginUrl() {
-  return request.get<{ url: string }>('/api/v1/auth/feishu/login')
+  return request.get<{ authorize_url: string }>('/api/v1/auth/feishu/login')
 }
 
 // 飞书 SSO 回调
