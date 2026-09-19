@@ -122,7 +122,7 @@
               </a-doption>
               <a-doption @click="showChangePassword">
                 <template #icon><icon-lock /></template>
-                修改密码
+                {{ hasPassword ? '修改密码' : '设置密码' }}
               </a-doption>
               <a-doption @click="handleLogout">
                 <template #icon><icon-export /></template>
@@ -143,19 +143,19 @@
       </a-layout-content>
     </a-layout>
 
-    <!-- 修改密码弹窗 -->
+    <!-- 修改密码弹窗（飞书 SSO 开户用户首次进入时为「设置密码」，免验旧密码） -->
     <a-modal
       v-model:visible="pwdVisible"
-      title="修改密码"
+      :title="hasPassword ? '修改密码' : '设置登录密码'"
       :width="440"
       :ok-loading="pwdLoading"
       @ok="handleChangePassword"
     >
       <a-form :model="pwdForm" :rules="pwdRules" layout="vertical" ref="pwdFormRef">
-        <a-form-item field="old_password" label="当前密码">
+        <a-form-item v-if="hasPassword" field="old_password" label="当前密码">
           <a-input-password v-model="pwdForm.old_password" placeholder="请输入当前密码" />
         </a-form-item>
-        <a-form-item field="new_password" label="新密码">
+        <a-form-item field="new_password" :label="hasPassword ? '新密码' : '设置密码'">
           <a-input-password v-model="pwdForm.new_password" placeholder="请输入新密码（至少 6 位）" />
         </a-form-item>
         <a-form-item field="confirm_password" label="确认新密码">
@@ -228,14 +228,16 @@ async function handleLogout() {
 const pwdVisible = ref(false)
 const pwdLoading = ref(false)
 const pwdFormRef = ref()
+// 飞书 SSO 开户用户 has_password=false：首次设置密码，免验旧密码
+const hasPassword = computed(() => userStore.currentUser?.has_password ?? true)
 const pwdForm = reactive({
   old_password: '',
   new_password: '',
   confirm_password: '',
 })
 
-const pwdRules = {
-  old_password: [{ required: true, message: '请输入当前密码' }],
+const pwdRules = computed(() => ({
+  old_password: hasPassword.value ? [{ required: true, message: '请输入当前密码' }] : [],
   new_password: [
     { required: true, message: '请输入新密码' },
     { minLength: 6, message: '密码至少 6 位' },
@@ -252,7 +254,7 @@ const pwdRules = {
       },
     },
   ],
-}
+}))
 
 function showChangePassword() {
   pwdForm.old_password = ''
@@ -267,10 +269,10 @@ async function handleChangePassword() {
   pwdLoading.value = true
   try {
     await changePassword({
-      old_password: pwdForm.old_password,
+      old_password: hasPassword.value ? pwdForm.old_password : null,
       new_password: pwdForm.new_password,
     })
-    Message.success('密码修改成功，请重新登录')
+    Message.success(hasPassword.value ? '密码修改成功，请重新登录' : '密码设置成功，请重新登录')
     pwdVisible.value = false
     await userStore.logout()
     router.push('/auth/login')

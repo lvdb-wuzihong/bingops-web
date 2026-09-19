@@ -28,10 +28,12 @@ export interface ICurrentUser {
   // 角色 code 列表（后端契约 v16 后为字符串数组）
   roles: string[]
   permissions: string[]
+  // 是否已设置本地密码；飞书 SSO 开户用户为 false，首次改密免验旧密码
+  has_password: boolean
 }
 
-// 修改密码请求
+// 修改密码请求（飞书 SSO 开户用户首次设置时 old_password 不传）
 export interface IChangePasswordRequest {
-  old_password: string
+  old_password: string | null
   new_password: string
 }
