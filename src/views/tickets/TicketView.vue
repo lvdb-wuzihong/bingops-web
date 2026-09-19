@@ -358,6 +358,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconEdit, IconDelete, IconUser, IconSafe, IconThunderbolt } from '@arco-design/web-vue/es/icon'
 import * as ticketApi from '../../api/ticket'
@@ -375,6 +376,9 @@ import type { IUser } from '../../types/user'
 import { getApps } from '../../api/app'
 import type { IBusinessApp } from '../../api/app'
 import { useUserStore } from '../../stores/user'
+
+const route = useRoute()
+const router = useRouter()
 
 // ========== 字典 ==========
 const statusMap: Record<string, { text: string; color: string }> = {
@@ -596,7 +600,7 @@ async function openDetail(id: number) {
   try {
     detail.value = (await ticketApi.getTicket(id)).data
     resolveTargetNames(detail.value.target_resource_ids || [])
-  } catch { Message.error('获取工单详情失败'); detailVisible.value = false }
+  } catch { Message.error('工单不存在或无权限'); detailVisible.value = false }
 }
 
 // 执行目标名称回显：按 id 批量取 name
@@ -900,7 +904,17 @@ async function handleDeleteFreeze(id: number) {
   try { await ticketApi.deleteFreeze(id); Message.success('已删除'); fetchFreezes() } catch { /* 拦截器已提示 */ }
 }
 
-onMounted(() => { fetchData(); fetchUsers() })
+onMounted(async () => {
+  fetchData()
+  fetchUsers()
+  // 飞书通知卡片深链：/tickets/list/{id} 直达详情（目标可能在任意分页，走详情接口定位才可靠）
+  const deepLinkId = Number(route.params.id)
+  if (Number.isInteger(deepLinkId) && deepLinkId > 0) {
+    await openDetail(deepLinkId)
+    // 清理路径段：避免之后点其他行开抽屉时 URL 与实际不一致
+    router.replace('/tickets/list')
+  }
+})
 </script>
 
 <style scoped lang="scss">

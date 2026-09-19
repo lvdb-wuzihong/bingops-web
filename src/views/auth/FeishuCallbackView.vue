@@ -66,6 +66,13 @@ const pwdRules = {
 }
 
 function enterApp() {
+  // 飞书深链回跳：换 token 后回到原始目标（如 /tickets/list/8），无则进仪表盘；仅接受站内相对路径
+  const saved = sessionStorage.getItem('feishu_redirect')
+  sessionStorage.removeItem('feishu_redirect')
+  if (saved && saved.startsWith('/') && !saved.startsWith('//') && !saved.startsWith('/\\')) {
+    router.replace(saved)
+    return
+  }
   router.replace('/dashboard')
 }
 

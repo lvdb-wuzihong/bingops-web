@@ -160,7 +160,7 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '工单系统', icon: 'icon-file' },
         children: [
           {
-            path: 'list',
+            path: 'list/:id?',
             name: 'TicketList',
             component: () => import('../views/tickets/TicketView.vue'),
             meta: { title: '工单列表' },

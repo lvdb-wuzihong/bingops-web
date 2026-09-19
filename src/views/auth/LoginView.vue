@@ -75,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { onMounted, ref, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { IconUser, IconLock, IconLink } from '@arco-design/web-vue/es/icon'
@@ -119,12 +119,27 @@ async function handleLogin() {
 
 async function handleFeishuLogin() {
   try {
+    // 深链意图：飞书 webview 未登录时先落到登录页（带 redirect），自动 SSO 前持久化目标
+    if (route.query.redirect) sessionStorage.setItem('feishu_redirect', String(route.query.redirect))
     const res = await getFeishuLoginUrl()
     window.location.href = res.data.authorize_url
   } catch {
     Message.error('获取飞书授权链接失败')
   }
 }
+
+// 飞书内置浏览器（webview）与本浏览器不共享登录态：深链未登录时自动走飞书 SSO，点开即达。
+// 防循环：本会话只自动尝试一次（授权/换取失败时用户可手动重试或改用账号密码）
+const isFeishuWebview = /Lark|Feishu/i.test(navigator.userAgent)
+
+onMounted(() => {
+  if (!isFeishuWebview) return
+  if (route.query.redirect) sessionStorage.setItem('feishu_redirect', String(route.query.redirect))
+  if (!sessionStorage.getItem('feishu_sso_attempted')) {
+    sessionStorage.setItem('feishu_sso_attempted', '1')
+    handleFeishuLogin()
+  }
+})
 </script>
 
 <style scoped lang="scss">
