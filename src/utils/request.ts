@@ -41,6 +41,29 @@ service.interceptors.request.use(
 )
 
 // 响应拦截器
+
+// 认证端点自身的 401（登录密码错 / refresh 失效 / 飞书 code 失效）不走刷新流程：
+// 登录页无 refresh_token 时旧逻辑会触发 handleLogout 整页刷新，把错误提示吞掉
+const AUTH_ENDPOINTS = ['/api/v1/auth/login', '/api/v1/auth/refresh', '/api/v1/auth/feishu/callback']
+
+function isAuthEndpoint(config?: InternalAxiosRequestConfig): boolean {
+  return AUTH_ENDPOINTS.some((u) => config?.url?.includes(u) ?? false)
+}
+
+// 后端认证错误消息为英文，透传前转中文
+const AUTH_401_MESSAGES: Array<[RegExp, string]> = [
+  [/invalid username or password/i, '用户名或密码错误'],
+  [/account is disabled/i, '账号已被禁用'],
+  [/user not found/i, '用户不存在或已禁用'],
+  [/invalid or expired refresh token/i, '登录已过期，请重新登录'],
+]
+
+function auth401Message(error: { response?: { data?: { message?: string } } }): string {
+  const raw = error.response?.data?.message || ''
+  const hit = AUTH_401_MESSAGES.find(([re]) => re.test(raw))
+  return hit ? hit[1] : raw || '登录失败'
+}
+
 service.interceptors.response.use(
   (response: AxiosResponse<IApiResponse>) => {
     const { data } = response
@@ -53,6 +76,12 @@ service.interceptors.response.use(
   async (error) => {
     const status = error.response?.status
     const originalRequest = error.config
+
+    // 认证端点自身的 401：透传后端原因（不进刷新流程，防止登录页整页刷新吞掉提示）
+    if (status === 401 && isAuthEndpoint(originalRequest)) {
+      Message.error(auth401Message(error))
+      return Promise.reject(error)
+    }
 
     // 401 自动刷新 Token
     if (status === 401 && !originalRequest._retry) {
@@ -95,6 +124,7 @@ service.interceptors.response.use(
     }
 
     const messages: Record<number, string> = {
+      401: '登录已过期，请重新登录',
       403: '拒绝访问',
       404: '请求资源不存在',
       500: '服务器错误',
