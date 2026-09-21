@@ -11,7 +11,6 @@
           </a-select>
           <a-select v-model="filters.source" placeholder="来源" allow-clear style="width: 140px" @change="handleSearch">
             <a-option value="bingops">平台原生 bingops</a-option>
-            <a-option value="n9e">夜莺 n9e</a-option>
           </a-select>
           <a-input v-model="filters.rule_code" placeholder="规则 code" allow-clear style="width: 160px" @change="handleSearch" />
           <a-range-picker v-model="dateRange" value-format="YYYY-MM-DD" style="width: 240px" @change="handleSearch" />
