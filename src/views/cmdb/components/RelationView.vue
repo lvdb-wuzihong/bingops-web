@@ -138,117 +138,165 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconDelete, IconRefresh } from '@arco-design/web-vue/es/icon'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { GraphChart } from 'echarts/charts'
-import { TooltipComponent, LegendComponent } from 'echarts/components'
-import * as echarts from 'echarts/core'
+import { Graph } from '@antv/g6'
+import type { EdgeData, ElementDatum, GraphData, IElementEvent, NodeData, PluginOptions } from '@antv/g6'
 import {
   getChildren, getParents, addBelongsTo, removeBelongsTo,
   getRelationsFrom, getRelationsTo, addRelatesTo, removeRelatesTo,
   getResourceTopology,
 } from '../../../api/relationship'
-import type { IBelongsToRelation, IRelatesToRelation, ITopologyData, ITopologyNode } from '../../../api/relationship'
+import type { IBelongsToRelation, IRelatesToRelation, ITopologyData, ITopologyEdge, ITopologyNode } from '../../../api/relationship'
 import { getResourceDetail } from '../../../api/cmdb'
-
-use([CanvasRenderer, GraphChart, TooltipComponent, LegendComponent])
 
 const props = defineProps<{ resourceId: number }>()
 
 // ========== 视图切换 ==========
 const viewMode = ref<'graph' | 'list'>('graph')
 
-// ========== 拓扑图 ==========
+// ========== 拓扑图（G6） ==========
 const graphRef = ref<HTMLElement>()
-let chartInstance: echarts.ECharts | null = null
+let graphInstance: Graph | null = null
 const topoLoading = ref(false)
 const topoData = ref<ITopologyData | null>(null)
 const depth = ref(2)
+
+// 模型分类色板（按首次出现顺序取色，同模型同色）
+const MODEL_PALETTE = ['#5b8ff9', '#5ad8a6', '#5d7092', '#f6bd16', '#e8684a', '#6dc8ec', '#9270ca', '#ff9d4d', '#269a99', '#ff99c3']
 
 function truncName(name: string): string {
   return name.length > 14 ? `${name.slice(0, 14)}…` : name
 }
 
+function modelCategory(n: ITopologyNode): string {
+  return n.model_name || n.model_code || '未知模型'
+}
+
+function edgeLabel(e: ITopologyEdge): string {
+  return e.description || (e.kind ? e.kind : e.relation_type === 'belongs_to' ? '从属' : '关联')
+}
+
+// 拓扑数据 → G6 图数据；取色在映射时按序固化进节点数据，保证图例取色一致
+function toGraphData(topo: ITopologyData): GraphData {
+  const colorMap = new Map<string, string>()
+  const colorOf = (category: string): string => {
+    let color = colorMap.get(category)
+    if (!color) { color = MODEL_PALETTE[colorMap.size % MODEL_PALETTE.length]; colorMap.set(category, color) }
+    return color
+  }
+  return {
+    nodes: topo.nodes.map((n) => ({
+      id: String(n.id),
+      data: { info: n, category: modelCategory(n), color: colorOf(modelCategory(n)) },
+    })),
+    edges: topo.edges.map((e) => ({
+      id: `${e.relation_type}-${e.id}`,
+      source: String(e.source_id),
+      target: String(e.target_id),
+      data: { info: e, label: edgeLabel(e) },
+    })),
+  }
+}
+
+function nodeTooltip(n: ITopologyNode): string {
+  return [
+    `<b>${n.name}</b>`,
+    `模型：${n.model_name || n.model_code || '-'}`,
+    `状态：${n.status}`,
+    `厂商：${n.provider || '-'}　地域：${n.region || '-'}`,
+  ].join('<br/>')
+}
+
+function edgeTooltip(e: ITopologyEdge): string {
+  return `${e.relation_type === 'belongs_to' ? '从属' : '关联'}${e.kind ? `（${e.kind}）` : ''}：${e.description || '-'}`
+}
+
 function renderGraph() {
   if (!graphRef.value || !topoData.value) return
-  if (!chartInstance) chartInstance = echarts.init(graphRef.value)
-
-  const { nodes, edges } = topoData.value
-  const categoryNames: string[] = []
-  const catIndex = (n: ITopologyNode): number => {
-    const key = n.model_name || n.model_code || '未知模型'
-    let i = categoryNames.indexOf(key)
-    if (i === -1) { categoryNames.push(key); i = categoryNames.length - 1 }
-    return i
+  // 分类数 > 1 才挂图例（与旧 ECharts 行为一致）
+  const categories = [...new Set(topoData.value.nodes.map(modelCategory))]
+  const plugins: PluginOptions = [{
+    type: 'tooltip',
+    key: 'topo-tooltip',
+    getContent: async (event: IElementEvent, items: ElementDatum[]) => {
+      const datum = items[0]
+      if (!datum?.data) return ''
+      const { info } = datum.data as { info: ITopologyNode | ITopologyEdge }
+      return event.targetType === 'node' ? nodeTooltip(info as ITopologyNode) : edgeTooltip(info as ITopologyEdge)
+    },
+  }]
+  if (categories.length > 1) {
+    plugins.push({ type: 'legend', key: 'topo-legend', nodeField: 'category', position: 'top', trigger: 'hover' })
   }
 
-  const data = nodes.map(n => ({
-    id: String(n.id),
-    name: truncName(n.name),
-    symbolSize: n.is_center ? 42 : 26,
-    category: catIndex(n),
-    itemStyle: n.is_center ? { borderColor: '#1677ff', borderWidth: 3 } : undefined,
-    nodeInfo: n,
-  }))
-  const links = edges.map(e => ({
-    source: String(e.source_id),
-    target: String(e.target_id),
-    edgeLabel: e.description || (e.kind ? e.kind : e.relation_type === 'belongs_to' ? '从属' : '关联'),
-    lineStyle: { color: e.relation_type === 'belongs_to' ? '#1677ff' : '#52c41a', width: 1.5, curveness: 0.12 },
-    edgeInfo: e,
-  }))
-
-  chartInstance.setOption({
-    tooltip: {
-      backgroundColor: '#ffffff',
-      borderColor: '#d6e4ff',
-      textStyle: { color: '#1d39c4', fontSize: 12 },
-      formatter: (p: unknown) => {
-        const params = p as { dataType?: string; data?: { nodeInfo?: ITopologyNode; edgeInfo?: ITopologyData['edges'][number] } }
-        if (params.dataType === 'node' && params.data?.nodeInfo) {
-          const n = params.data.nodeInfo
-          return [
-            `<b>${n.name}</b>`,
-            `模型：${n.model_name || n.model_code || '-'}`,
-            `状态：${n.status}`,
-            `厂商：${n.provider || '-'}　地域：${n.region || '-'}`,
-          ].join('<br/>')
-        }
-        if (params.dataType === 'edge' && params.data?.edgeInfo) {
-          const e = params.data.edgeInfo
-          return `${e.relation_type === 'belongs_to' ? '从属' : '关联'}${e.kind ? `（${e.kind}）` : ''}：${e.description || '-'}`
-        }
-        return ''
+  if (!graphInstance) {
+    graphInstance = new Graph({
+      container: graphRef.value,
+      autoResize: true,
+      autoFit: 'view',
+      padding: 24,
+      data: toGraphData(topoData.value),
+      node: {
+        style: (d: NodeData) => {
+          const { info, color } = d.data as { info: ITopologyNode; color: string }
+          return {
+            size: info.is_center ? 42 : 26,
+            fill: color,
+            stroke: info.is_center ? '#1677ff' : 'transparent',
+            lineWidth: info.is_center ? 3 : 0,
+            labelText: truncName(info.name),
+            labelPlacement: 'bottom',
+            labelFontSize: 11,
+            labelFill: '#4e5969',
+          }
+        },
+        state: {
+          active: { halo: true },
+          dim: { fillOpacity: 0.2, strokeOpacity: 0.2, labelFillOpacity: 0.2 },
+        },
       },
-    },
-    legend: categoryNames.length > 1 ? { data: categoryNames, top: 0, textStyle: { color: '#597ef7' } } : undefined,
-    series: [{
-      type: 'graph',
-      layout: 'force',
-      data,
-      links,
-      categories: categoryNames.map(name => ({ name })),
-      roam: true,
-      draggable: true,
-      edgeSymbol: ['none', 'arrow'],
-      edgeSymbolSize: 7,
-      label: { show: true, position: 'bottom', fontSize: 11, color: '#4e5969' },
-      edgeLabel: {
-        show: true,
-        fontSize: 10,
-        color: '#86909c',
-        formatter: (p: unknown) => String((p as { data?: { edgeLabel?: string } }).data?.edgeLabel ?? ''),
+      edge: {
+        style: (d: EdgeData) => {
+          const { info, label } = d.data as { info: ITopologyEdge; label: string }
+          return {
+            stroke: info.relation_type === 'belongs_to' ? '#1677ff' : '#52c41a',
+            lineWidth: 1.5,
+            endArrow: true,
+            endArrowSize: 7,
+            labelText: label,
+            labelFontSize: 10,
+            labelFill: '#86909c',
+          }
+        },
+        state: {
+          active: { lineWidth: 3 },
+          dim: { strokeOpacity: 0.2, labelFillOpacity: 0.2 },
+        },
       },
-      force: { repulsion: 260, edgeLength: 110, gravity: 0.06 },
-      emphasis: { focus: 'adjacency', lineStyle: { width: 3 } },
-    }],
-  }, true)
-
-  chartInstance.off('dblclick')
-  chartInstance.on('dblclick', (params) => {
-    const p = params as { dataType?: string; data?: { nodeInfo?: ITopologyNode } }
-    if (p.dataType === 'node' && p.data?.nodeInfo) expandNode(p.data.nodeInfo.id)
-  })
+      // 对应旧 ECharts force：repulsion 260 / edgeLength 110 / gravity 0.06
+      layout: {
+        type: 'd3-force',
+        manyBody: { strength: -300 },
+        link: { distance: 110 },
+        collide: { radius: 28 },
+        animation: true,
+      },
+      behaviors: [
+        'drag-canvas',
+        'zoom-canvas',
+        'drag-element',
+        { type: 'hover-activate', degree: 1, direction: 'both', inactiveState: 'dim' },
+      ],
+      plugins,
+    })
+    graphInstance.on('node:dblclick', (event: IElementEvent) => {
+      const id = Number((event.target as { id?: string | number }).id)
+      if (!Number.isNaN(id)) expandNode(id)
+    })
+  } else {
+    graphInstance.setData(toGraphData(topoData.value))
+    graphInstance.setPlugins(plugins)
+  }
+  graphInstance.render()
 }
 
 async function fetchTopology() {
@@ -278,10 +326,8 @@ async function expandNode(nodeId: number) {
   } catch { /* ignore */ }
 }
 
-function handleResize() { chartInstance?.resize() }
-
 watch(viewMode, (mode) => {
-  if (mode === 'graph') nextTick(() => chartInstance?.resize())
+  if (mode === 'graph') nextTick(() => graphInstance?.resize())
 })
 
 // ========== 资源名称反查（列表视图用） ==========
@@ -419,7 +465,6 @@ onMounted(() => {
   fetchParents()
   fetchChildren()
   fetchRelations()
-  window.addEventListener('resize', handleResize)
 })
 
 // 父页路由参数变化（点击关联资源跳转，组件复用）：重置名称缓存并重拉
@@ -432,9 +477,8 @@ watch(() => props.resourceId, () => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  chartInstance?.dispose()
-  chartInstance = null
+  graphInstance?.destroy()
+  graphInstance = null
 })
 </script>
 
