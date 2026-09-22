@@ -794,7 +794,7 @@ async function openDispatchModal() {
     for (const d of details) {
       if (d.status === 'fulfilled') {
         const r = d.value.data
-        extra.push({ id: r.id, name: r.name, model_code: null, provider: r.provider, region: r.region, status: r.status })
+        extra.push({ id: r.id, name: r.name, model_code: null, provider: r.provider, region: r.region, status: r.status, provider_id: r.provider_id, labels: null })
       }
     }
     targetResourceOptions.value = extra

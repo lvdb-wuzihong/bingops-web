@@ -72,7 +72,7 @@ export function getResourceList(params?: IResourceQuery) {
   return request.get<IPaginatedData<ICmdbResource>>('/api/v1/cmdb/resources', { params })
 }
 
-// 资源选择器轻量搜索（工单关联资源等下拉场景）
+// 资源选择器轻量搜索（下拉/首页全局搜索；keyword 覆盖 name/IP/labels/fields）
 export interface IResourceOption {
   id: number
   name: string
@@ -81,6 +81,9 @@ export interface IResourceOption {
   region: string | null
   // NULL = 该资源类型无生命周期状态；unknown = 有状态概念但识别失败
   status: string | null
+  // 实例 ID（IP/主机标识等，搜索结果摘要展示用）
+  provider_id: string | null
+  labels: Record<string, string> | null
 }
 
 export function getResourceOptions(params?: { keyword?: string; model_id?: number; status?: string; limit?: number }) {

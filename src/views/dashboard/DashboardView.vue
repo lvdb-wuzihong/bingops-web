@@ -20,6 +20,32 @@
       </div>
     </div>
 
+    <!-- 快速搜索资产：回车/点击跳转独立结果页 -->
+    <a-card :bordered="false" class="search-card">
+      <a-input-search
+        v-model="searchKeyword"
+        placeholder="搜索资产：名称 / IP / 实例 ID / 业务 / 负责人"
+        size="large"
+        allow-clear
+        search-button
+        @search="goSearch"
+      />
+    </a-card>
+
+    <!-- 最近资产变更 -->
+    <a-card title="最近资产变更" class="activity-card solo">
+      <a-table :data="recentChanges" :columns="changeColumns" :pagination="false" :bordered="false" size="small">
+        <template #change_type="{ record }">
+          <a-tag size="small" :color="changeTypeMeta(record.change_type).color">{{ changeTypeMeta(record.change_type).text }}</a-tag>
+        </template>
+        <template #object="{ record }">
+          <a-link @click="$router.push({ name: 'ResourceDetail', params: { id: String(record.resource_id) } })">{{ record.resource_name || `#${record.resource_id}` }}</a-link>
+        </template>
+        <template #created_at="{ record }">{{ formatTime(record.created_at) }}</template>
+        <template #empty><a-empty description="暂无变更" /></template>
+      </a-table>
+    </a-card>
+
     <!-- 图表区域 -->
     <div class="chart-row">
       <a-card title="工单每日趋势（创建 / 解决）" class="chart-card chart-card-wide">
@@ -57,6 +83,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, markRaw } from 'vue'
+import { useRouter } from 'vue-router'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, PieChart } from 'echarts/charts'
@@ -72,8 +99,12 @@ import {
 import { getDashboardStats } from '../../api/dashboard'
 import type { IResourceStats } from '../../api/cmdb'
 import { getModels } from '../../api/model'
+import { getChangeLogs } from '../../api/changeLog'
+import type { IChangeLog } from '../../api/changeLog'
 import { getTicketStats, getTickets, getFreezes } from '../../api/ticket'
 import type { ITicketStats, ITicket } from '../../api/ticket'
+
+const router = useRouter()
 
 use([CanvasRenderer, LineChart, PieChart, TooltipComponent, LegendComponent, GridComponent])
 
@@ -148,6 +179,32 @@ const statItems = computed(() => [
 
 const topAssignees = computed(() => (ticketStats.value?.by_assignee ?? []).slice(0, 5))
 
+// ========== 快速搜索资产：回车跳转独立结果页（/cmdb/search?keyword=） ==========
+const searchKeyword = ref('')
+
+function goSearch(v?: string | number | boolean) {
+  const kw = String(v ?? '').trim()
+  if (!kw) return
+  router.push({ path: '/cmdb/search', query: { keyword: kw } })
+}
+
+// ========== 最近资产变更 ==========
+const recentChanges = ref<IChangeLog[]>([])
+const CHANGE_TYPE_META: Record<string, { text: string; color: string }> = {
+  create: { text: '创建', color: 'green' },
+  update: { text: '更新', color: 'blue' },
+  delete: { text: '删除', color: 'red' },
+  tag: { text: '标签', color: 'purple' },
+}
+function changeTypeMeta(t: string) { return CHANGE_TYPE_META[t] || { text: t, color: 'gray' } }
+
+const changeColumns = [
+  { title: '操作', slotName: 'change_type', width: 70 },
+  { title: '对象', slotName: 'object', ellipsis: true },
+  { title: '变更人', dataIndex: 'operator', width: 90 },
+  { title: '时间', slotName: 'created_at', width: 130 },
+]
+
 const ticketColumns = [
   { title: '标题', slotName: 'title', ellipsis: true },
   { title: '状态', slotName: 'status', width: 90 },
@@ -177,17 +234,19 @@ function fmtMin(m: number | null): string {
 }
 
 async function fetchAll() {
-  const [cmdb, stats, freezes, tickets, models] = await Promise.allSettled([
+  const [cmdb, stats, freezes, tickets, models, changes] = await Promise.allSettled([
     getDashboardStats(),
     getTicketStats(),
     getFreezes(true),
     getTickets({ page: 1, page_size: 6 }),
     getModels(),
+    getChangeLogs({ page: 1, page_size: 8 }),
   ])
   if (cmdb.status === 'fulfilled') cmdbStats.value = cmdb.value.data
   if (stats.status === 'fulfilled') ticketStats.value = stats.value.data
   if (freezes.status === 'fulfilled') activeFreezeCount.value = freezes.value.data.length
   if (tickets.status === 'fulfilled') recentTickets.value = tickets.value.data.items
+  if (changes.status === 'fulfilled') recentChanges.value = changes.value.data.items
   if (models.status === 'fulfilled') {
     const m: Record<string, string> = {}
     models.value.data.forEach(x => { m[String(x.id)] = x.name })
@@ -410,4 +469,7 @@ onUnmounted(() => {
   border: 1px solid $border-color;
   backdrop-filter: blur(12px);
 }
+
+// 最近资产变更单列卡（资产分层入口已移除）
+.activity-card.solo { margin-bottom: $spacing-md; }
 </style>

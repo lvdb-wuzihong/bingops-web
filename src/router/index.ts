@@ -36,14 +36,26 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'cmdb',
         name: 'CMDB',
-        redirect: '/cmdb/resources',
+        redirect: '/cmdb/overview',
         meta: { title: 'CMDB 资源管理', icon: 'icon-storage' },
         children: [
+          {
+            path: 'overview',
+            name: 'AssetOverview',
+            component: () => import('../views/cmdb/OverviewView.vue'),
+            meta: { title: '资产总览' },
+          },
+          {
+            path: 'search',
+            name: 'AssetSearch',
+            component: () => import('../views/cmdb/AssetSearchView.vue'),
+            meta: { title: '资产搜索', hidden: true },
+          },
           {
             path: 'resources',
             name: 'ResourceList',
             component: () => import('../views/cmdb/AssetList.vue'),
-            meta: { title: '资源列表' },
+            meta: { title: '资源列表', hidden: true },
           },
           {
             path: 'resources/:id',

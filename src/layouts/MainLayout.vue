@@ -42,7 +42,7 @@
         <a-sub-menu key="CMDB">
           <template #icon><icon-storage /></template>
           <template #title>CMDB 资源管理</template>
-          <a-menu-item key="ResourceList">资源列表</a-menu-item>
+          <a-menu-item key="AssetOverview">资产总览</a-menu-item>
           <a-menu-item key="ModelManagement">模型管理</a-menu-item>
           <a-menu-item key="TagManagement">标签管理</a-menu-item>
           <a-menu-item key="BusinessAppList">业务应用</a-menu-item>
@@ -204,7 +204,9 @@ const userInitial = computed(() => {
 })
 
 const selectedKeys = computed(() => {
-  return [route.name as string]
+  // 资源列表已收敛为资产总览的下钻页（不在菜单单列）：高亮归属「资产总览」，保持 CMDB 组展开
+  const name = route.name as string
+  return [name === 'ResourceList' ? 'AssetOverview' : name]
 })
 
 const breadcrumbs = computed(() => {

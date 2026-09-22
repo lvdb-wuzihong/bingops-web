@@ -253,7 +253,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconRefresh, IconEye, IconEdit, IconDelete, IconStorage } from '@arco-design/web-vue/es/icon'
 import { getResourceList, getResourceStats, createResource, updateResource, deleteResource } from '../../api/cmdb'
@@ -261,6 +261,7 @@ import type { ICmdbResource, IResourceQuery, IResourceCreate, IResourceUpdate } 
 import * as modelApi from '../../api/model'
 import type { IModel, IModelField, IModelCategory } from '../../types/model'
 
+const route = useRoute()
 const router = useRouter()
 
 // ========== 模型树 ==========
@@ -584,6 +585,12 @@ watch(selectedModelId, (id) => { if (id) fetchModelFields(id) })
 
 onMounted(async () => {
   await fetchModelsAndCategories()
+  // 资产总览深链：?model_id=x 锁定单模型（动态列按该模型字段精确渲染，解决混合视图字段不该有/不该少）
+  const deepModelId = Number(route.query.model_id)
+  if (Number.isInteger(deepModelId) && deepModelId > 0 && allModels.value.some(m => m.id === deepModelId)) {
+    selectedModelId.value = deepModelId
+    selectedCategoryKeys.value = [deepModelId]
+  }
   fetchResources()
   fetchStats()
 })
