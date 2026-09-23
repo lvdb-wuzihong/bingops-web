@@ -6,26 +6,41 @@
         <a-radio value="graph">拓扑图</a-radio>
         <a-radio value="list">列表管理</a-radio>
       </a-radio-group>
-      <div v-if="viewMode === 'graph'" class="graph-toolbar">
-        <a-tag v-if="topoData?.truncated" color="orangered" size="small">高扇出截断，仅展示部分邻居</a-tag>
-        <span class="toolbar-label">深度</span>
-        <a-select v-model="depth" size="small" style="width: 64px" @change="fetchTopology">
-          <a-option :value="1">1</a-option>
-          <a-option :value="2">2</a-option>
-          <a-option :value="3">3</a-option>
-        </a-select>
-        <a-button size="small" @click="fetchTopology">
-          <template #icon><icon-refresh /></template>
-        </a-button>
-      </div>
     </div>
 
-    <!-- 拓扑图 -->
-    <div v-show="viewMode === 'graph'">
-      <a-spin :loading="topoLoading" style="width: 100%">
-        <div ref="graphRef" class="topo-chart"></div>
-      </a-spin>
-      <p class="graph-tip">拖拽平移、滚轮缩放；双击节点展开该节点的一度关系；蓝边=从属（子→父），绿边=关联。</p>
+    <!-- 拓扑图（BlueKing 式：语义分组侧栏 + 层次布局卡片节点） -->
+    <div v-show="viewMode === 'graph'" class="topo-body">
+      <div class="topo-sidebar">
+        <h5>关联关系</h5>
+        <template v-if="centerRelationGroups.length">
+          <div v-for="g in centerRelationGroups" :key="g.label" class="rel-group">
+            <div class="rel-group-label">{{ g.label }}</div>
+            <div v-for="item in g.items" :key="item.modelName" class="rel-group-item">
+              <span class="rel-model">{{ item.modelName }}</span>
+              <span class="rel-count">{{ item.count }}</span>
+            </div>
+          </div>
+        </template>
+        <p v-else class="rel-empty">当前资源暂无直接关系</p>
+      </div>
+      <div class="topo-main">
+        <div class="graph-toolbar">
+          <a-tag v-if="topoData?.truncated" color="orangered" size="small">高扇出截断，仅展示部分邻居</a-tag>
+          <span class="toolbar-label">深度</span>
+          <a-select v-model="depth" size="small" style="width: 64px" @change="fetchTopology">
+            <a-option :value="1">1</a-option>
+            <a-option :value="2">2</a-option>
+            <a-option :value="3">3</a-option>
+          </a-select>
+          <a-button size="small" @click="fetchTopology">
+            <template #icon><icon-refresh /></template>
+          </a-button>
+        </div>
+        <a-spin :loading="topoLoading" style="width: 100%">
+          <div ref="graphRef" class="topo-chart"></div>
+        </a-spin>
+        <p class="graph-tip">拖拽平移、滚轮缩放；双击节点展开该节点的一度关系；宿主在左、子级与关联在右，卡片角标为模型。</p>
+      </div>
     </div>
 
     <!-- 列表管理 -->
@@ -188,14 +203,56 @@ function toGraphData(topo: ITopologyData): GraphData {
       id: String(n.id),
       data: { info: n, category: modelCategory(n), color: colorOf(modelCategory(n)) },
     })),
-    edges: topo.edges.map((e) => ({
-      id: `${e.relation_type}-${e.id}`,
-      source: String(e.source_id),
-      target: String(e.target_id),
-      data: { info: e, label: edgeLabel(e) },
-    })),
+    edges: topo.edges.map((e) => {
+      // 层次布局方向归一：belongs_to 反转为父→子（宿主在左、被托管在右）；relates_to 入向反转为中心→对端
+      let source = e.source_id
+      let target = e.target_id
+      if (e.relation_type === 'belongs_to') {
+        source = e.target_id
+        target = e.source_id
+      } else if (e.target_id === topo.center_id) {
+        source = e.target_id
+        target = e.source_id
+      }
+      return {
+        id: `${e.relation_type}-${e.id}`,
+        source: String(source),
+        target: String(target),
+        data: { info: e, label: edgeLabel(e) },
+      }
+    }),
   }
 }
+
+// 中心资源直接关系的语义聚合（BlueKing 式侧栏：属于 → Node 1 / 组成 → Pod 3）
+const centerRelationGroups = computed(() => {
+  const topo = topoData.value
+  if (!topo) return []
+  const nodeById = new Map(topo.nodes.map(n => [n.id, n]))
+  const acc = new Map<string, { label: string; modelName: string; count: number }>()
+  for (const e of topo.edges) {
+    if (e.source_id !== topo.center_id && e.target_id !== topo.center_id) continue
+    const label = e.relation_type === 'belongs_to'
+      ? (e.source_id === topo.center_id ? '属于' : '组成')
+      : (e.description || e.kind || '关联')
+    const peerId = e.source_id === topo.center_id ? e.target_id : e.source_id
+    const peer = nodeById.get(peerId)
+    const modelName = peer ? modelCategory(peer) : '未知模型'
+    const key = `${label}::${modelName}`
+    const hit = acc.get(key)
+    if (hit) hit.count += 1
+    else acc.set(key, { label, modelName, count: 1 })
+  }
+  const grouped = new Map<string, { modelName: string; count: number }[]>()
+  for (const { label, modelName, count } of acc.values()) {
+    const list = grouped.get(label) ?? []
+    list.push({ modelName, count })
+    grouped.set(label, list)
+  }
+  return [...grouped.entries()]
+    .map(([label, items]) => ({ label, items: items.sort((a, b) => b.count - a.count) }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+})
 
 function nodeTooltip(n: ITopologyNode): string {
   return [
@@ -236,17 +293,28 @@ function renderGraph() {
       padding: 24,
       data: toGraphData(topoData.value),
       node: {
+        type: 'rect',
         style: (d: NodeData) => {
           const { info, color } = d.data as { info: ITopologyNode; color: string }
           return {
-            size: info.is_center ? 42 : 26,
-            fill: color,
-            stroke: info.is_center ? '#1677ff' : 'transparent',
-            lineWidth: info.is_center ? 3 : 0,
+            size: [176, 44],
+            fill: '#ffffff',
+            stroke: info.is_center ? '#1677ff' : color,
+            lineWidth: info.is_center ? 2.5 : 1.2,
+            radius: 8,
+            shadowColor: info.is_center ? 'rgba(22, 119, 255, 0.25)' : 'rgba(0, 0, 0, 0.06)',
+            shadowBlur: info.is_center ? 12 : 4,
             labelText: truncName(info.name),
-            labelPlacement: 'bottom',
-            labelFontSize: 11,
-            labelFill: '#4e5969',
+            labelPlacement: 'center',
+            labelFontSize: 12,
+            labelFontWeight: info.is_center ? 700 : 500,
+            labelFill: info.is_center ? '#1677ff' : '#1d2129',
+            badge: !info.is_center,
+            badgeText: info.model_code || 'CI',
+            badgePlacement: 'right-top',
+            badgeFontSize: 9,
+            badgeBackgroundColor: color,
+            badgePadding: [1, 4],
           }
         },
         state: {
@@ -259,25 +327,26 @@ function renderGraph() {
           const { info, label } = d.data as { info: ITopologyEdge; label: string }
           return {
             stroke: info.relation_type === 'belongs_to' ? '#1677ff' : '#52c41a',
-            lineWidth: 1.5,
-            endArrow: true,
-            endArrowSize: 7,
+            lineWidth: 1.4,
             labelText: label,
             labelFontSize: 10,
             labelFill: '#86909c',
+            labelBackground: true,
+            labelBackgroundFill: 'rgba(255, 255, 255, 0.85)',
+            labelBackgroundRadius: 4,
           }
         },
         state: {
-          active: { lineWidth: 3 },
+          active: { lineWidth: 2.5 },
           dim: { strokeOpacity: 0.2, labelFillOpacity: 0.2 },
         },
       },
-      // 对应旧 ECharts force：repulsion 260 / edgeLength 110 / gravity 0.06
+      // BlueKing 式层次布局：宿主在左、子级与关联在右（边方向已在 toGraphData 归一）
       layout: {
-        type: 'd3-force',
-        manyBody: { strength: -300 },
-        link: { distance: 110 },
-        collide: { radius: 28 },
+        type: 'antv-dagre',
+        rankdir: 'LR',
+        nodesep: 14,
+        ranksep: 64,
         animation: true,
       },
       behaviors: [
@@ -491,6 +560,42 @@ onUnmounted(() => {
 
 .graph-toolbar { display: flex; align-items: center; gap: $spacing-sm; }
 .toolbar-label { font-size: $font-size-xs; color: $text-secondary; }
+
+.topo-body { display: flex; gap: $spacing-md; align-items: stretch; }
+
+.topo-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: $bg-card;
+  border: 1px solid $border-color-light;
+  border-radius: $radius-md;
+  padding: $spacing-sm $spacing-md;
+
+  h5 { margin: 0 0 $spacing-xs; font-size: $font-size-sm; color: $text-primary; }
+}
+
+.rel-group { margin-bottom: $spacing-xs; }
+.rel-group-label { font-size: $font-size-xs; color: $color-primary; font-weight: 600; margin-bottom: 2px; }
+.rel-group-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 3px $spacing-xs; border-radius: $radius-sm;
+  font-size: $font-size-xs; color: $text-secondary;
+  &:hover { background: rgba(22, 119, 255, 0.05); }
+}
+.rel-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel-count {
+  color: $color-primary; font-weight: 600;
+  background: rgba(22, 119, 255, 0.08); border-radius: 8px; padding: 0 6px;
+}
+.rel-empty { font-size: $font-size-xs; color: $text-disabled; }
+
+.topo-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
 
 .topo-chart {
   width: 100%;
