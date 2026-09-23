@@ -105,3 +105,51 @@ export function brandIconDataUri(name: string): string | null {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${icon.w} ${icon.h}">${icon.body}</svg>`
   return `data:image/svg+xml,${encodeURIComponent(svg)}`
 }
+
+// ── 模型/厂商 → 品牌图标映射（拓扑卡片等场景共用） ──
+
+export interface BrandIconSource {
+  model_code?: string | null
+  provider?: string | null
+}
+
+const MODEL_ICON_RULES: Array<[RegExp, string]> = [
+  [/^aliyun|^alibaba/, 'alibabacloud'],
+  [/^aws/, 'aws'],
+  [/^gcp|^google/, 'google-cloud'],
+  [/^azure/, 'azure'],
+  [/^huawei/, 'huawei'],
+  [/^k8s/, 'kubernetes'],
+  [/^docker/, 'docker'],
+  [/^mysql/, 'mysql'],
+  [/^oracle/, 'oracle'],
+  [/^mssql|^sqlserver/, 'microsoftsqlserver'],
+  [/^redis/, 'redis'],
+  [/^mongo/, 'mongodb'],
+  [/^elastic/, 'elasticsearch'],
+  [/^postgres/, 'postgresql'],
+  [/^kafka|^amqp/, 'kafka'],
+  [/^nginx/, 'nginx'],
+]
+const PROVIDER_ICON_MAP: Record<string, string> = {
+  aliyun: 'alibabacloud',
+  aws: 'aws',
+  gcp: 'google-cloud',
+  azure: 'azure',
+  huawei: 'huawei',
+}
+
+export function iconFor(n: BrandIconSource): string | null {
+  if (n.model_code) {
+    for (const [re, name] of MODEL_ICON_RULES) {
+      if (re.test(n.model_code)) return name
+    }
+  }
+  if (n.provider && PROVIDER_ICON_MAP[n.provider]) return PROVIDER_ICON_MAP[n.provider]
+  return null
+}
+
+export function iconUriFor(n: BrandIconSource): string | null {
+  const name = iconFor(n)
+  return name ? brandIconDataUri(name) : null
+}

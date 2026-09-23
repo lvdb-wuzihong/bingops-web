@@ -163,7 +163,7 @@ import {
 } from '../../../api/relationship'
 import type { IBelongsToRelation, IRelatesToRelation, ITopologyData, ITopologyEdge, ITopologyNode } from '../../../api/relationship'
 import { getResourceDetail } from '../../../api/cmdb'
-import { brandIconDataUri } from '../../../assets/brand-icons'
+import { iconUriFor } from '../../../assets/brand-icons'
 
 const props = defineProps<{ resourceId: number }>()
 
@@ -193,43 +193,6 @@ function modelAbbr(code: string | null): string {
   const parts = code.split(/[^a-zA-Z0-9]+/).filter(Boolean)
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
   return code.slice(0, 2).toUpperCase()
-}
-
-// 模型/厂商 → 品牌图标名（SVG 数据见 src/assets/brand-icons.ts）
-const MODEL_ICON_RULES: Array<[RegExp, string]> = [
-  [/^aliyun|^alibaba/, 'alibabacloud'],
-  [/^aws/, 'aws'],
-  [/^gcp|^google/, 'google-cloud'],
-  [/^azure/, 'azure'],
-  [/^huawei/, 'huawei'],
-  [/^k8s/, 'kubernetes'],
-  [/^docker/, 'docker'],
-  [/^mysql/, 'mysql'],
-  [/^oracle/, 'oracle'],
-  [/^mssql|^sqlserver/, 'microsoftsqlserver'],
-  [/^redis/, 'redis'],
-  [/^mongo/, 'mongodb'],
-  [/^elastic/, 'elasticsearch'],
-  [/^postgres/, 'postgresql'],
-  [/^kafka|^amqp/, 'kafka'],
-  [/^nginx/, 'nginx'],
-]
-const PROVIDER_ICON_MAP: Record<string, string> = {
-  aliyun: 'alibabacloud',
-  aws: 'aws',
-  gcp: 'google-cloud',
-  azure: 'azure',
-  huawei: 'huawei',
-}
-
-function iconFor(n: ITopologyNode): string | null {
-  if (n.model_code) {
-    for (const [re, name] of MODEL_ICON_RULES) {
-      if (re.test(n.model_code)) return name
-    }
-  }
-  if (n.provider && PROVIDER_ICON_MAP[n.provider]) return PROVIDER_ICON_MAP[n.provider]
-  return null
 }
 
 class CardNode extends BaseNode {
@@ -445,7 +408,7 @@ function renderGraph() {
             name: info.name,
             modelCode: info.model_code,
             abbr: modelAbbr(info.model_code),
-            iconUri: brandIconDataUri(iconFor(info) ?? ''),
+            iconUri: iconUriFor(info),
             // 内置 icon/label/badge 全部关闭，视觉由 card-node 自绘
             icon: false,
             label: false,

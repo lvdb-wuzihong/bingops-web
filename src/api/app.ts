@@ -13,6 +13,10 @@ export interface IBusinessApp {
   repo_url: string | null
   // 各环境流水线地址 {env: url}，key 对齐 env 标签值域
   pipelines: Record<string, string>
+  // 归属业务域（应用之上的唯一分组，v24）；未挂为 null
+  business_id: number | null
+  // 依赖声明：[{type: internal, app_code} / {type: external, name, url}]
+  dependencies: Array<{ type: string; app_code?: string; name?: string; url?: string; note?: string }>
   created_at: string
   updated_at: string
 }
@@ -27,6 +31,7 @@ export interface IBusinessAppCreate {
   labels?: Record<string, string>
   repo_url?: string | null
   pipelines?: Record<string, string>
+  business_id?: number | null
 }
 
 export interface IBusinessAppUpdate {
@@ -38,6 +43,7 @@ export interface IBusinessAppUpdate {
   labels?: Record<string, string>
   repo_url?: string | null
   pipelines?: Record<string, string>
+  business_id?: number | null
 }
 
 export interface IBusinessAppQuery extends IPageParams {
@@ -103,4 +109,88 @@ export function unbindAppResource(appId: number, resourceId: number) {
 
 export function getResourceApps(resourceId: number) {
   return request.get<IResourceApp[]>(`/api/v1/cmdb/apps/by-resource/${resourceId}`)
+}
+
+// ========== 应用拓扑（v24：以应用为中心的依赖/资源子图，G6 数据源） ==========
+
+export type AppTopologyNodeType = 'app' | 'external' | 'resource'
+export type AppTopologyRelation =
+  | 'depends_on'
+  | 'depended_by'
+  | 'external_dependency'
+  | 'hosts_resource'
+  | 'shared_resource'
+
+export interface IAppTopologyNode {
+  // 带前缀字符串（app:{id} / external:{key} / resource:{rid}）
+  id: string
+  type: AppTopologyNodeType
+  name: string
+  // app 节点
+  app_code?: string
+  owner?: string | null
+  business_id?: number | null
+  is_center?: boolean
+  // external 节点
+  url?: string
+  // resource 节点
+  model_code?: string | null
+  layer?: string | null
+  provider?: string | null
+  env?: string | null
+  // 被其他应用共享归集（存储级耦合信号）
+  shared?: boolean
+}
+
+export interface IAppTopologyEdge {
+  source: string
+  target: string
+  relation: AppTopologyRelation
+  note?: string
+}
+
+export interface IAppTopologyData {
+  center_id: string
+  nodes: IAppTopologyNode[]
+  edges: IAppTopologyEdge[]
+}
+
+export function getAppTopology(appId: number) {
+  return request.get<IAppTopologyData>(`/api/v1/cmdb/apps/${appId}/topology`)
+}
+
+// ========== 业务域（应用之上的唯一分组，v24） ==========
+
+export interface IBusinessDomain {
+  id: number
+  code: string
+  name: string
+  owner: string | null
+  description: string | null
+  app_count: number
+}
+
+export interface IBusinessDomainCreate {
+  name: string
+  code: string
+  owner?: string | null
+  description?: string | null
+}
+
+export interface IBusinessDomainUpdate {
+  name?: string
+  owner?: string | null
+  description?: string | null
+}
+
+export function listBusinessDomains() {
+  return request.get<IBusinessDomain[]>('/api/v1/cmdb/business-domains')
+}
+
+export function createBusinessDomain(data: IBusinessDomainCreate) {
+  return request.post<IBusinessDomain>('/api/v1/cmdb/business-domains', data)
+}
+
+export function updateBusinessDomain(id: number, data: IBusinessDomainUpdate) {
+  return request.put<IBusinessDomain>(`/api/v1/cmdb/business-domains/${id}`, data)
 }

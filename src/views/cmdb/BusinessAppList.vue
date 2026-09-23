@@ -2,8 +2,16 @@
   <div class="business-app-list">
     <a-card :bordered="false" class="list-card">
       <div class="filter-bar">
-        <span class="panel-title">业务应用</span>
+        <a-space size="medium">
+          <span class="panel-title">业务应用</span>
+          <a-button size="small" @click="openDomainManager">
+            <template #icon><icon-storage /></template>业务域管理
+          </a-button>
+        </a-space>
         <a-space>
+          <a-select v-model="businessFilter" placeholder="全部业务域" allow-clear style="width: 150px">
+            <a-option v-for="d in domains" :key="d.id" :value="d.id">{{ d.name }}（{{ d.app_count }}）</a-option>
+          </a-select>
           <a-input-search v-model="filterTeam" placeholder="按团队筛选" allow-clear style="width: 180px" @search="handleSearch" />
           <a-button type="primary" @click="handleAdd">
             <template #icon><icon-plus /></template>新增应用
@@ -11,7 +19,7 @@
         </a-space>
       </div>
       <a-table
-        :data="apps"
+        :data="filteredApps"
         :loading="loading"
         :columns="columns"
         :pagination="pagination"
@@ -20,6 +28,10 @@
         @page-size-change="onPageSizeChange"
       >
         <template #app_code="{ record }"><a-tag size="small" color="arcoblue">{{ record.app_code }}</a-tag></template>
+        <template #business="{ record }">
+          <a-tag v-if="record.business_id" size="small" color="cyan">{{ domainNameMap[record.business_id] || `#${record.business_id}` }}</a-tag>
+          <span v-else>-</span>
+        </template>
         <template #repo_url="{ record }">
           <a-space v-if="record.repo_url" size="mini">
             <a-tooltip :content="record.repo_url">
@@ -41,6 +53,7 @@
         </template>
         <template #actions="{ record }">
           <a-space>
+            <a-button type="text" size="small" @click="openTopology(record)"><template #icon><icon-branch /></template>拓扑</a-button>
             <a-button type="text" size="small" @click="openResources(record)"><template #icon><icon-apps /></template>资源</a-button>
             <a-button type="text" size="small" @click="handleEdit(record)"><template #icon><icon-edit /></template></a-button>
             <a-popconfirm content="确定删除该应用？" @ok="handleDelete(record.id)">
@@ -62,6 +75,11 @@
           <a-col :span="12"><a-form-item field="owner" label="负责人"><a-input v-model="formData.owner" placeholder="如：张三" /></a-form-item></a-col>
         </a-row>
         <a-form-item field="department" label="部门"><a-input v-model="formData.department" placeholder="如：技术部" /></a-form-item>
+        <a-form-item field="business_id" label="归属业务域">
+          <a-select v-model="formData.business_id" placeholder="可选：应用之上的业务分组" allow-clear>
+            <a-option v-for="d in domains" :key="d.id" :value="d.id">{{ d.name }}（{{ d.code }}）</a-option>
+          </a-select>
+        </a-form-item>
         <a-form-item field="repo_url" label="代码仓库地址">
           <a-input v-model="formData.repo_url" placeholder="可选，如：https://gitlab.example.com/group/order-service" />
         </a-form-item>
@@ -81,6 +99,41 @@
           </div>
         </a-form-item>
         <a-form-item field="description" label="描述"><a-textarea v-model="formData.description" placeholder="可选" :auto-size="{ minRows: 2, maxRows: 4 }" /></a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 应用关系视图抽屉 -->
+    <AppTopologyDrawer v-model:visible="topoVisible" :app-id="topoAppId" />
+
+    <!-- 业务域管理弹窗 -->
+    <a-modal v-model:visible="domainModalVisible" title="业务域管理" :width="680" :footer="false" unmount-on-close>
+      <div class="domain-toolbar">
+        <a-button type="primary" size="small" @click="openDomainForm(null)">
+          <template #icon><icon-plus /></template>新增业务域
+        </a-button>
+        <a-button size="small" @click="fetchDomains">
+          <template #icon><icon-refresh /></template>
+        </a-button>
+      </div>
+      <a-table :data="domains" :loading="domainLoading" :pagination="false" row-key="id" size="small">
+        <template #name="{ record }">
+          <span class="domain-name">{{ record.name }}</span>
+          <span class="domain-code">{{ record.code }}</span>
+        </template>
+        <template #owner="{ record }">{{ record.owner || '-' }}</template>
+        <template #actions="{ record }">
+          <a-button type="text" size="mini" @click="openDomainForm(record)"><template #icon><icon-edit /></template></a-button>
+        </template>
+      </a-table>
+    </a-modal>
+
+    <!-- 业务域新增/编辑弹窗 -->
+    <a-modal v-model:visible="domainFormVisible" :title="editingDomainId ? '编辑业务域' : '新增业务域'" :width="440" :ok-loading="domainFormLoading" @ok="handleDomainSubmit">
+      <a-form :model="domainForm" :rules="domainRules" layout="vertical" ref="domainFormRef">
+        <a-form-item field="name" label="业务域名称"><a-input v-model="domainForm.name" placeholder="如：电商平台" /></a-form-item>
+        <a-form-item field="code" label="编码"><a-input v-model="domainForm.code" placeholder="如：ecommerce" :disabled="!!editingDomainId" /></a-form-item>
+        <a-form-item field="owner" label="负责人"><a-input v-model="domainForm.owner" placeholder="可选" /></a-form-item>
+        <a-form-item field="description" label="描述"><a-textarea v-model="domainForm.description" placeholder="可选" :auto-size="{ minRows: 2, maxRows: 3 }" /></a-form-item>
       </a-form>
     </a-modal>
 
@@ -128,10 +181,11 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { IconPlus, IconEdit, IconDelete, IconApps, IconCopy } from '@arco-design/web-vue/es/icon'
+import { IconPlus, IconEdit, IconDelete, IconApps, IconCopy, IconBranch, IconStorage, IconRefresh } from '@arco-design/web-vue/es/icon'
 import * as appApi from '../../api/app'
-import type { IBusinessApp, IAppResource } from '../../api/app'
+import type { IBusinessApp, IAppResource, IBusinessDomain } from '../../api/app'
 import { getTagDefinitions } from '../../api/tag'
+import AppTopologyDrawer from './components/AppTopologyDrawer.vue'
 
 const providerMap: Record<string, string> = { aliyun: '阿里云', aws: 'AWS', gcp: '谷歌云', k8s: 'Kubernetes', manual: '手动录入' }
 const statusMap: Record<string, string> = { running: '运行中', ready: '就绪', not_ready: '未就绪', stopped: '已停止', pending: '启动中', failed: '异常', succeeded: '已完成', maintenance: '维护中', unknown: '未知' }
@@ -142,12 +196,13 @@ const filterTeam = ref('')
 const pagination = reactive({ current: 1, pageSize: 20, total: 0, showTotal: true, showPageSize: true })
 const columns = [
   { title: '应用编码', slotName: 'app_code', width: 140 },
-  { title: '应用名称', dataIndex: 'name', width: 160 },
-  { title: '团队', dataIndex: 'team', width: 120 },
-  { title: '负责人', dataIndex: 'owner', width: 100 },
-  { title: '仓库', slotName: 'repo_url', width: 170 },
-  { title: '流水线', slotName: 'pipelines', width: 130 },
-  { title: '操作', slotName: 'actions', width: 140 },
+  { title: '应用名称', dataIndex: 'name', width: 150 },
+  { title: '业务域', slotName: 'business', width: 100 },
+  { title: '团队', dataIndex: 'team', width: 110 },
+  { title: '负责人', dataIndex: 'owner', width: 90 },
+  { title: '仓库', slotName: 'repo_url', width: 150 },
+  { title: '流水线', slotName: 'pipelines', width: 120 },
+  { title: '操作', slotName: 'actions', width: 180 },
 ]
 
 async function fetchData() {
@@ -167,21 +222,21 @@ const formVisible = ref(false)
 const formLoading = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref()
-const formData = reactive({ app_code: '', name: '', team: '', owner: '', department: '', repo_url: '', description: '' })
+const formData = reactive({ app_code: '', name: '', team: '', owner: '', department: '', repo_url: '', description: '', business_id: undefined as number | undefined })
 const formRules = { app_code: [{ required: true, message: '请输入编码' }], name: [{ required: true, message: '请输入名称' }] }
 // 流水线编辑行（提交时收敛为 {env: url} map）
 const pipelineRows = ref<Array<{ env: string; url: string }>>([])
 
 function handleAdd() {
   editingId.value = null
-  Object.assign(formData, { app_code: '', name: '', team: '', owner: '', department: '', repo_url: '', description: '' })
+  Object.assign(formData, { app_code: '', name: '', team: '', owner: '', department: '', repo_url: '', description: '', business_id: undefined })
   pipelineRows.value = []
   formVisible.value = true
 }
 
 function handleEdit(record: IBusinessApp) {
   editingId.value = record.id
-  Object.assign(formData, { app_code: record.app_code, name: record.name, team: record.team || '', owner: record.owner || '', department: record.department || '', repo_url: record.repo_url || '', description: record.description || '' })
+  Object.assign(formData, { app_code: record.app_code, name: record.name, team: record.team || '', owner: record.owner || '', department: record.department || '', repo_url: record.repo_url || '', description: record.description || '', business_id: record.business_id ?? undefined })
   pipelineRows.value = Object.entries(record.pipelines || {}).map(([env, url]) => ({ env, url }))
   formVisible.value = true
 }
@@ -205,9 +260,9 @@ async function handleSubmit() {
   formLoading.value = true
   try {
     if (editingId.value) {
-      await appApi.updateApp(editingId.value, { name: formData.name, team: formData.team || undefined, owner: formData.owner || undefined, department: formData.department || undefined, description: formData.description || undefined, repo_url: formData.repo_url || null, pipelines })
+      await appApi.updateApp(editingId.value, { name: formData.name, team: formData.team || undefined, owner: formData.owner || undefined, department: formData.department || undefined, description: formData.description || undefined, repo_url: formData.repo_url || null, pipelines, business_id: formData.business_id ?? null })
     } else {
-      await appApi.createApp({ app_code: formData.app_code, name: formData.name, team: formData.team || undefined, owner: formData.owner || undefined, department: formData.department || undefined, description: formData.description || undefined, repo_url: formData.repo_url || null, pipelines })
+      await appApi.createApp({ app_code: formData.app_code, name: formData.name, team: formData.team || undefined, owner: formData.owner || undefined, department: formData.department || undefined, description: formData.description || undefined, repo_url: formData.repo_url || null, pipelines, business_id: formData.business_id ?? null })
     }
     Message.success(editingId.value ? '编辑成功' : '新增成功')
     formVisible.value = false
@@ -310,7 +365,67 @@ async function fetchEnvOptions() {
   } catch { /* 标签接口失败时保留空候选，允许手输兜底 */ }
 }
 
-onMounted(() => { fetchData(); fetchEnvOptions() })
+onMounted(() => { fetchData(); fetchEnvOptions(); fetchDomains() })
+
+// ========== 业务域（应用之上的唯一分组，v24） ==========
+const domains = ref<IBusinessDomain[]>([])
+const domainLoading = ref(false)
+const domainModalVisible = ref(false)
+const domainFormVisible = ref(false)
+const domainFormLoading = ref(false)
+const editingDomainId = ref<number | null>(null)
+const domainFormRef = ref()
+const domainForm = reactive({ name: '', code: '', owner: '', description: '' })
+const domainRules = {
+  name: [{ required: true, message: '请输入业务域名称' }],
+  code: [{ required: true, message: '请输入编码' }],
+}
+
+const domainNameMap = computed(() => Object.fromEntries(domains.value.map(d => [d.id, d.name])))
+// 业务域筛选为客户端过滤（应用量级小，无需后端参数）
+const businessFilter = ref<number | undefined>()
+const filteredApps = computed(() => (businessFilter.value ? apps.value.filter(a => a.business_id === businessFilter.value) : apps.value))
+
+async function fetchDomains() {
+  domainLoading.value = true
+  try { domains.value = (await appApi.listBusinessDomains()).data } catch { /* ignore */ } finally { domainLoading.value = false }
+}
+
+function openDomainManager() {
+  domainModalVisible.value = true
+  fetchDomains()
+}
+
+function openDomainForm(record: IBusinessDomain | null) {
+  editingDomainId.value = record?.id ?? null
+  Object.assign(domainForm, { name: record?.name || '', code: record?.code || '', owner: record?.owner || '', description: record?.description || '' })
+  domainFormVisible.value = true
+}
+
+async function handleDomainSubmit() {
+  const errors = await domainFormRef.value?.validate()
+  if (errors) return
+  domainFormLoading.value = true
+  try {
+    if (editingDomainId.value) {
+      await appApi.updateBusinessDomain(editingDomainId.value, { name: domainForm.name, owner: domainForm.owner || null, description: domainForm.description || null })
+    } else {
+      await appApi.createBusinessDomain({ name: domainForm.name, code: domainForm.code, owner: domainForm.owner || null, description: domainForm.description || null })
+    }
+    Message.success(editingDomainId.value ? '编辑成功' : '新增成功')
+    domainFormVisible.value = false
+    fetchDomains()
+  } catch { /* 拦截器已提示 */ } finally { domainFormLoading.value = false }
+}
+
+// ========== 应用关系视图 ==========
+const topoVisible = ref(false)
+const topoAppId = ref<number | null>(null)
+
+function openTopology(record: IBusinessApp) {
+  topoAppId.value = record.id
+  topoVisible.value = true
+}
 </script>
 
 <style scoped lang="scss">
@@ -335,4 +450,8 @@ onMounted(() => { fetchData(); fetchEnvOptions() })
   display: flex; flex-direction: column; gap: $spacing-xs; width: 100%;
   .pipeline-row { display: flex; gap: $spacing-xs; align-items: center; :deep(.arco-input-wrapper) { flex: 1; } }
 }
+
+.domain-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: $spacing-sm; }
+.domain-name { font-weight: 500; color: $text-primary; margin-right: 8px; }
+.domain-code { font-size: $font-size-xs; color: $text-secondary; font-family: $font-mono; }
 </style>
