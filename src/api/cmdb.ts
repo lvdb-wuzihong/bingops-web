@@ -181,6 +181,8 @@ export interface IModelOverviewItem {
   icon: string | null
   description: string | null
   is_enabled: boolean
+  // 架构分层：access/service/middleware/storage/host/network/infra；未设置为 null
+  layer: string | null
   resource_count: number
 }
 

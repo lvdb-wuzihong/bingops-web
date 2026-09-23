@@ -32,6 +32,20 @@ export interface IModelCategoryUpdate {
 }
 
 // ---------- 模型定义 ----------
+
+// 模型架构分层（资产分层，与后端 ModelCreate.layer 值域对齐）
+export const MODEL_LAYERS = ['access', 'service', 'middleware', 'storage', 'host', 'network', 'infra'] as const
+
+export const MODEL_LAYER_MAP: Record<string, { text: string; color: string }> = {
+  access: { text: '接入层', color: 'cyan' },
+  service: { text: '服务层', color: 'arcoblue' },
+  middleware: { text: '中间件层', color: 'purple' },
+  storage: { text: '存储层', color: 'green' },
+  host: { text: '主机层', color: 'orange' },
+  network: { text: '网络层', color: 'blue' },
+  infra: { text: '基础设施层', color: 'gray' },
+}
+
 export interface IModel {
   id: number
   category_id: number
@@ -41,6 +55,8 @@ export interface IModel {
   description: string | null
   is_builtin: boolean
   is_enabled: boolean
+  // 架构分层：access/service/middleware/storage/host/network/infra；未设置为 null
+  layer: string | null
   sort_order: number
   created_at: string
   updated_at: string
@@ -56,6 +72,7 @@ export interface IModelCreate {
   code: string
   icon?: string
   description?: string
+  layer?: string | null
   sort_order?: number
 }
 
@@ -63,6 +80,7 @@ export interface IModelUpdate {
   name?: string
   icon?: string | null
   description?: string | null
+  layer?: string | null
   is_enabled?: boolean | null
   sort_order?: number | null
 }

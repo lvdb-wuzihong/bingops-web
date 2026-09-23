@@ -47,7 +47,10 @@
                 <icon-storage />
               </div>
               <div class="card-info">
-                <span class="card-name">{{ model.name }}</span>
+                <span class="card-name">
+                  {{ model.name }}
+                  <a-tag v-if="model.layer" size="small" :color="MODEL_LAYER_MAP[model.layer]?.color || 'gray'">{{ MODEL_LAYER_MAP[model.layer]?.text || model.layer }}</a-tag>
+                </span>
                 <span class="card-code">{{ model.code }}</span>
               </div>
               <div class="card-count">{{ getModelCount(model.id) }}</div>
@@ -95,6 +98,12 @@
           <a-col :span="12"><a-form-item field="name" label="模型名称"><a-input v-model="modelForm.name" placeholder="如：K8S集群" /></a-form-item></a-col>
           <a-col :span="12"><a-form-item field="code" label="编码"><a-input v-model="modelForm.code" placeholder="如：k8s_cluster" :disabled="!!editingModelId" /></a-form-item></a-col>
         </a-row>
+        <a-form-item field="layer" label="架构分层">
+          <a-select v-model="modelForm.layer" placeholder="可选：接入/服务/中间件/存储/主机/网络/基础设施" allow-clear>
+            <a-option v-for="l in MODEL_LAYERS" :key="l" :value="l">{{ MODEL_LAYER_MAP[l]?.text || l }}</a-option>
+          </a-select>
+          <template #extra><span class="form-extra-tip">用于资产总览按分层分组展示</span></template>
+        </a-form-item>
         <a-form-item field="description" label="描述"><a-textarea v-model="modelForm.description" placeholder="可选" :auto-size="{ minRows: 2, maxRows: 4 }" /></a-form-item>
         <a-form-item field="icon" label="图标标识"><a-input v-model="modelForm.icon" placeholder="可选" /></a-form-item>
       </a-form>
@@ -220,6 +229,7 @@ import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconEdit, IconDelete, IconStorage } from '@arco-design/web-vue/es/icon'
 import * as modelApi from '../../api/model'
 import { getResourceStats } from '../../api/cmdb'
+import { MODEL_LAYERS, MODEL_LAYER_MAP } from '../../types/model'
 import type { IModelCategory, IModel, IModelField, IModelRelation } from '../../types/model'
 
 // ========== 数据 ==========
@@ -314,7 +324,7 @@ const modelModalVisible = ref(false)
 const modelModalLoading = ref(false)
 const editingModelId = ref<number | null>(null)
 const modelFormRef = ref()
-const modelForm = reactive({ category_id: undefined as number | undefined, name: '', code: '', description: '', icon: '' })
+const modelForm = reactive({ category_id: undefined as number | undefined, name: '', code: '', description: '', icon: '', layer: undefined as string | undefined })
 const modelRules = {
   category_id: [{ required: true, message: '请选择分组' }],
   name: [{ required: true, message: '请输入名称' }],
@@ -329,7 +339,7 @@ function handleAddModel() {
 
 function handleEditModel(record: IModel) {
   editingModelId.value = record.id
-  Object.assign(modelForm, { category_id: record.category_id, name: record.name, code: record.code, description: record.description || '', icon: record.icon || '' })
+  Object.assign(modelForm, { category_id: record.category_id, name: record.name, code: record.code, description: record.description || '', icon: record.icon || '', layer: record.layer ?? undefined })
   modelModalVisible.value = true
 }
 
@@ -339,9 +349,9 @@ async function handleModelSubmit() {
   modelModalLoading.value = true
   try {
     if (editingModelId.value) {
-      await modelApi.updateModel(editingModelId.value, { name: modelForm.name, icon: modelForm.icon || null, description: modelForm.description || null })
+      await modelApi.updateModel(editingModelId.value, { name: modelForm.name, icon: modelForm.icon || null, description: modelForm.description || null, layer: modelForm.layer ?? null })
     } else {
-      await modelApi.createModel({ category_id: modelForm.category_id!, name: modelForm.name, code: modelForm.code, description: modelForm.description || undefined, icon: modelForm.icon || undefined })
+      await modelApi.createModel({ category_id: modelForm.category_id!, name: modelForm.name, code: modelForm.code, description: modelForm.description || undefined, icon: modelForm.icon || undefined, layer: modelForm.layer || undefined })
     }
     Message.success(editingModelId.value ? '编辑成功' : '新增成功')
     modelModalVisible.value = false
@@ -606,6 +616,7 @@ onMounted(() => fetchAll())
     gap: 2px;
 
     .card-name {
+      display: flex; align-items: center; gap: 4px;
       font-size: $font-size-base;
       font-weight: 500;
       color: $text-body;
@@ -653,4 +664,6 @@ onMounted(() => fetchAll())
   grid-column: 1 / -1;
   padding: $spacing-lg;
 }
+
+.form-extra-tip { font-size: $font-size-xs; color: $text-secondary; }
 </style>
