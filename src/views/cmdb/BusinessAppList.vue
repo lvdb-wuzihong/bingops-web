@@ -142,7 +142,7 @@
       <div class="bind-bar">
         <a-input-number v-model="bindResourceId" placeholder="资源 ID" :min="1" hide-button style="width: 160px" />
         <a-button type="primary" :loading="bindLoading" @click="handleBind">绑定资源</a-button>
-        <span class="bind-tip">仅支持服务级 CI（workload / 中间件 / 数据库等）</span>
+        <span class="bind-tip">仅支持服务级 CI（workload / 中间件 / 数据库等）；「部署流水线」仅对 workload / service 类资源生效，中间件类无构建语义</span>
         <a-select v-model="envFilter" placeholder="全部环境" allow-clear style="width: 130px; margin-left: auto">
           <a-option v-for="opt in drawerEnvOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-option>
         </a-select>
@@ -165,7 +165,9 @@
           <a-tag size="small" :color="record.source === 'tag' ? 'green' : 'blue'">{{ record.source === 'tag' ? '标签归集' : '手动绑定' }}</a-tag>
         </template>
         <template #pipeline="{ record }">
-          <a-link v-if="record.env && drawerApp?.pipelines?.[record.env]" :href="drawerApp.pipelines[record.env]" target="_blank">打开</a-link>
+          <!-- 三态：可部署模型且该环境已配置 → 打开；可部署但未配置 → -；中间件/存储类 → 灰色 —（无构建语义） -->
+          <a-link v-if="isDeployable(record.model_code) && record.env && drawerApp?.pipelines?.[record.env]" :href="drawerApp.pipelines[record.env]" target="_blank">打开</a-link>
+          <span v-else-if="!isDeployable(record.model_code)" class="pipeline-na">—</span>
           <span v-else>-</span>
         </template>
         <template #actions="{ record }">
@@ -289,9 +291,16 @@ const resourceColumns = [
   { title: '云厂商', slotName: 'provider', width: 90 },
   { title: '状态', slotName: 'status', width: 80 },
   { title: '来源', slotName: 'source', width: 100 },
-  { title: '流水线', slotName: 'pipeline', width: 70 },
+  { title: '部署流水线', slotName: 'pipeline', width: 90 },
   { title: '操作', slotName: 'actions', width: 60 },
 ]
+
+// 有「构建→部署」语义的模型：只有它们渲染流水线跳转；中间件/存储类无此语义（显示 —）
+const DEPLOYABLE_MODEL_CODES = new Set(['k8s_workload', 'k8s_service'])
+
+function isDeployable(modelCode: string | null): boolean {
+  return !!modelCode && DEPLOYABLE_MODEL_CODES.has(modelCode)
+}
 
 // 环境维度：env 来自资源 env/k8s:env 标签，客户端即时筛选
 const envFilter = ref<string | undefined>()
@@ -445,6 +454,7 @@ function openTopology(record: IBusinessApp) {
 .copy-btn { color: $text-secondary; &:hover { color: $color-primary; } }
 
 .pipeline-tag { cursor: pointer; }
+.pipeline-na { color: $text-disabled; }
 
 .pipeline-editor {
   display: flex; flex-direction: column; gap: $spacing-xs; width: 100%;
