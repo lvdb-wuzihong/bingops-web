@@ -20,18 +20,6 @@
       </div>
     </div>
 
-    <!-- 快速搜索资产：回车/点击跳转独立结果页 -->
-    <a-card :bordered="false" class="search-card">
-      <a-input-search
-        v-model="searchKeyword"
-        placeholder="搜索资产：名称 / IP / 实例 ID / 业务 / 负责人"
-        size="large"
-        allow-clear
-        search-button
-        @search="goSearch"
-      />
-    </a-card>
-
     <!-- 最近资产变更 -->
     <a-card title="最近资产变更" class="activity-card solo">
       <a-table :data="recentChanges" :columns="changeColumns" :pagination="false" :bordered="false" size="small">
@@ -83,7 +71,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, markRaw } from 'vue'
-import { useRouter } from 'vue-router'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, PieChart } from 'echarts/charts'
@@ -103,8 +90,6 @@ import { getChangeLogs } from '../../api/changeLog'
 import type { IChangeLog } from '../../api/changeLog'
 import { getTicketStats, getTickets, getFreezes } from '../../api/ticket'
 import type { ITicketStats, ITicket } from '../../api/ticket'
-
-const router = useRouter()
 
 use([CanvasRenderer, LineChart, PieChart, TooltipComponent, LegendComponent, GridComponent])
 
@@ -178,15 +163,6 @@ const statItems = computed(() => [
 ])
 
 const topAssignees = computed(() => (ticketStats.value?.by_assignee ?? []).slice(0, 5))
-
-// ========== 快速搜索资产：回车跳转独立结果页（/cmdb/search?keyword=） ==========
-const searchKeyword = ref('')
-
-function goSearch(v?: string | number | boolean) {
-  const kw = String(v ?? '').trim()
-  if (!kw) return
-  router.push({ path: '/cmdb/search', query: { keyword: kw } })
-}
 
 // ========== 最近资产变更 ==========
 const recentChanges = ref<IChangeLog[]>([])
