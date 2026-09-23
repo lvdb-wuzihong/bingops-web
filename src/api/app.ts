@@ -155,8 +155,9 @@ export interface IAppTopologyData {
   edges: IAppTopologyEdge[]
 }
 
-export function getAppTopology(appId: number) {
-  return request.get<IAppTopologyData>(`/api/v1/cmdb/apps/${appId}/topology`)
+// env 可选：按环境标签（env/k8s:env）过滤资源节点；不传 = 全部环境
+export function getAppTopology(appId: number, env?: string) {
+  return request.get<IAppTopologyData>(`/api/v1/cmdb/apps/${appId}/topology`, { params: { env } })
 }
 
 // ========== 业务域（应用之上的唯一分组，v24） ==========

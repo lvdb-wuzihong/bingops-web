@@ -3,6 +3,10 @@
     <template #title>
       <a-space wrap>
         <span>应用关系视图</span>
+        <!-- 环境筛选：按环境标签过滤资源节点（后端 ?env=）；候选来自标签定义 env 允许值 -->
+        <a-select v-model="envFilter" size="small" placeholder="全部环境" allow-clear style="width: 120px">
+          <a-option v-for="e in envOptions" :key="e" :value="e">{{ e }}</a-option>
+        </a-select>
         <template v-if="topo">
           <a-tag size="small" color="arcoblue">依赖 {{ relCount('depends_on') }}</a-tag>
           <a-tag size="small" color="green">被依赖 {{ relCount('depended_by') }}</a-tag>
@@ -31,6 +35,7 @@ import { getAppTopology } from '../../../api/app'
 import type { AppTopologyRelation, IAppTopologyData, IAppTopologyEdge, IAppTopologyNode } from '../../../api/app'
 import { iconUriFor } from '../../../assets/brand-icons'
 import { MODEL_LAYER_MAP } from '../../../types/model'
+import { getTagDefinitions } from '../../../api/tag'
 
 const props = defineProps<{ appId: number | null; visible: boolean }>()
 const emit = defineEmits<{ (e: 'update:visible', v: boolean): void }>()
@@ -136,6 +141,10 @@ const topo = ref<IAppTopologyData | null>(null)
 const chartRef = ref<HTMLElement>()
 let graph: Graph | null = null
 
+// 环境筛选：候选 = 标签定义 env 允许值；切换时带 ?env= 重拉拓扑
+const envFilter = ref<string | undefined>()
+const envOptions = ref<string[]>([])
+
 function relCount(r: AppTopologyRelation): number {
   return topo.value?.edges.filter(e => e.relation === r).length ?? 0
 }
@@ -150,9 +159,11 @@ const EDGE_META: Record<AppTopologyRelation, { stroke: string; dashed: boolean; 
 
 function nodeSubText(n: IAppTopologyNode): string {
   if (n.type === 'app') return n.app_code || '应用'
-  if (n.type === 'external') return n.url ? '外部依赖' : '外部依赖'
-  const layerText = n.layer ? (MODEL_LAYER_MAP[n.layer]?.text || n.layer) : '资源'
-  return n.shared ? `${layerText} · 共享` : layerText
+  if (n.type === 'external') return '外部依赖'
+  const parts = [n.layer ? (MODEL_LAYER_MAP[n.layer]?.text || n.layer) : '资源']
+  if (n.env) parts.push(n.env)
+  if (n.shared) parts.push('共享')
+  return parts.join(' · ')
 }
 
 function nodeIcon(n: IAppTopologyNode): { uri: string | null; char: string; fill: string } {
@@ -314,8 +325,15 @@ function renderGraph() {
 watch(() => props.visible, async (v) => {
   if (v && props.appId) {
     loading.value = true
+    envFilter.value = undefined
     try {
-      topo.value = (await getAppTopology(props.appId)).data
+      // 并发：拓扑（全部环境）+ 环境候选（标签定义 env 允许值，与流水线编辑器同源）
+      const [topoRes, tagDefs] = await Promise.all([
+        getAppTopology(props.appId),
+        getTagDefinitions({ page: 1, page_size: 100 }).catch(() => null),
+      ])
+      topo.value = topoRes.data
+      envOptions.value = tagDefs?.data.items.find(d => d.tag_key === 'env')?.allowed_values ?? []
       await nextTick()
       renderGraph()
     } catch { /* 拦截器已提示 */ } finally { loading.value = false }
@@ -325,6 +343,17 @@ watch(() => props.visible, async (v) => {
     graph = null
     topo.value = null
   }
+})
+
+// 切换环境：带 ?env= 重拉资源节点（应用/外部节点不受环境影响）
+watch(envFilter, async () => {
+  if (!props.visible || !props.appId) return
+  loading.value = true
+  try {
+    topo.value = (await getAppTopology(props.appId, envFilter.value)).data
+    await nextTick()
+    renderGraph()
+  } catch { /* 拦截器已提示 */ } finally { loading.value = false }
 })
 </script>
 
