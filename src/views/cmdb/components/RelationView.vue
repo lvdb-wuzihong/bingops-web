@@ -153,8 +153,9 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconDelete, IconRefresh } from '@arco-design/web-vue/es/icon'
-import { Graph } from '@antv/g6'
-import type { EdgeData, ElementDatum, GraphData, IElementEvent, NodeData, PluginOptions } from '@antv/g6'
+import { BaseNode, ExtensionCategory, Graph, register } from '@antv/g6'
+import type { DisplayObject, Group } from '@antv/g'
+import type { BaseNodeStyleProps, EdgeData, ElementDatum, GraphData, IElementEvent, NodeData, PluginOptions } from '@antv/g6'
 import {
   getChildren, getParents, addBelongsTo, removeBelongsTo,
   getRelationsFrom, getRelationsTo, addRelatesTo, removeRelatesTo,
@@ -162,8 +163,148 @@ import {
 } from '../../../api/relationship'
 import type { IBelongsToRelation, IRelatesToRelation, ITopologyData, ITopologyEdge, ITopologyNode } from '../../../api/relationship'
 import { getResourceDetail } from '../../../api/cmdb'
+import { brandIconDataUri } from '../../../assets/brand-icons'
 
 const props = defineProps<{ resourceId: number }>()
+
+// ========== BlueKing 式卡片节点（自定义 G6 元素） ==========
+const CARD_W = 208
+const CARD_H = 48
+const ICON_BLOCK = 32
+
+type CardAttributes = Required<BaseNodeStyleProps> & {
+  color: string
+  isCenter: boolean
+  name: string
+  modelCode: string | null
+  abbr: string
+  // 品牌图标 data URI（阿里云/谷歌云/AWS/K8S 等）；无匹配时为 null 走字母兜底
+  iconUri: string | null
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '')
+  return `rgba(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)}, ${alpha})`
+}
+
+// 模型缩写：下划线分段取首字母（aliyun_ecs → AE；k8s_node → KN）
+function modelAbbr(code: string | null): string {
+  if (!code) return 'R'
+  const parts = code.split(/[^a-zA-Z0-9]+/).filter(Boolean)
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+  return code.slice(0, 2).toUpperCase()
+}
+
+// 模型/厂商 → 品牌图标名（SVG 数据见 src/assets/brand-icons.ts）
+const MODEL_ICON_RULES: Array<[RegExp, string]> = [
+  [/^aliyun|^alibaba/, 'alibabacloud'],
+  [/^aws/, 'aws'],
+  [/^gcp|^google/, 'google-cloud'],
+  [/^azure/, 'azure'],
+  [/^huawei/, 'huawei'],
+  [/^k8s/, 'kubernetes'],
+  [/^docker/, 'docker'],
+  [/^mysql/, 'mysql'],
+  [/^oracle/, 'oracle'],
+  [/^mssql|^sqlserver/, 'microsoftsqlserver'],
+  [/^redis/, 'redis'],
+  [/^mongo/, 'mongodb'],
+  [/^elastic/, 'elasticsearch'],
+  [/^postgres/, 'postgresql'],
+  [/^kafka|^amqp/, 'kafka'],
+  [/^nginx/, 'nginx'],
+]
+const PROVIDER_ICON_MAP: Record<string, string> = {
+  aliyun: 'alibabacloud',
+  aws: 'aws',
+  gcp: 'google-cloud',
+  azure: 'azure',
+  huawei: 'huawei',
+}
+
+function iconFor(n: ITopologyNode): string | null {
+  if (n.model_code) {
+    for (const [re, name] of MODEL_ICON_RULES) {
+      if (re.test(n.model_code)) return name
+    }
+  }
+  if (n.provider && PROVIDER_ICON_MAP[n.provider]) return PROVIDER_ICON_MAP[n.provider]
+  return null
+}
+
+class CardNode extends BaseNode {
+  static type = 'card-node'
+
+  protected drawKeyShape(attributes: CardAttributes, container: Group): DisplayObject | undefined {
+    const { color, isCenter, name, modelCode, abbr, iconUri } = attributes
+    const textX = -CARD_W / 2 + 8 + ICON_BLOCK + 10
+    const key = this.upsert('key', 'rect', {
+      x: -CARD_W / 2,
+      y: -CARD_H / 2,
+      width: CARD_W,
+      height: CARD_H,
+      fill: '#ffffff',
+      stroke: isCenter ? '#1677ff' : color,
+      lineWidth: isCenter ? 2 : 1,
+      radius: 8,
+      shadowColor: isCenter ? 'rgba(22, 119, 255, 0.2)' : 'rgba(0, 0, 0, 0.06)',
+      shadowBlur: isCenter ? 10 : 3,
+    }, container)
+    // 左侧模型图标块：有品牌图标画 SVG，否则缩写字母兜底
+    const blockFill = isCenter ? 'rgba(22, 119, 255, 0.08)' : 'rgba(0, 0, 0, 0.03)'
+    this.upsert('icon-block', 'rect', {
+      x: -CARD_W / 2 + 8,
+      y: -ICON_BLOCK / 2,
+      width: ICON_BLOCK,
+      height: ICON_BLOCK,
+      fill: iconUri ? blockFill : (isCenter ? 'rgba(22, 119, 255, 0.12)' : hexToRgba(color, 0.14)),
+      radius: 6,
+    }, container)
+    if (iconUri) {
+      this.upsert('icon-img', 'image', {
+        x: -CARD_W / 2 + 8 + (ICON_BLOCK - 22) / 2,
+        y: -11,
+        width: 22,
+        height: 22,
+        src: iconUri,
+      }, container)
+    } else {
+      this.upsert('icon-abbr', 'text', {
+        text: abbr,
+        x: -CARD_W / 2 + 8 + ICON_BLOCK / 2,
+        y: 0,
+        fontSize: 13,
+        fontWeight: 700,
+        fill: isCenter ? '#1677ff' : color,
+        textAlign: 'center',
+        textBaseline: 'middle',
+      }, container)
+    }
+    // 右侧两行：名称（粗）+ 模型类型（灰）
+    this.upsert('name-text', 'text', {
+      text: truncName(name, 12),
+      x: textX,
+      y: -7,
+      fontSize: 12,
+      fontWeight: isCenter ? 700 : 600,
+      fill: isCenter ? '#1677ff' : '#1d2129',
+      textAlign: 'start',
+      textBaseline: 'middle',
+    }, container)
+    this.upsert('type-text', 'text', {
+      text: modelCode || '资源',
+      x: textX,
+      y: 11,
+      fontSize: 10,
+      fill: '#86909c',
+      textAlign: 'start',
+      textBaseline: 'middle',
+    }, container)
+    return key
+  }
+}
+
+register(ExtensionCategory.NODE, 'card-node', CardNode)
 
 // ========== 视图切换 ==========
 const viewMode = ref<'graph' | 'list'>('graph')
@@ -178,8 +319,8 @@ const depth = ref(2)
 // 模型分类色板（按首次出现顺序取色，同模型同色）
 const MODEL_PALETTE = ['#5b8ff9', '#5ad8a6', '#5d7092', '#f6bd16', '#e8684a', '#6dc8ec', '#9270ca', '#ff9d4d', '#269a99', '#ff99c3']
 
-function truncName(name: string): string {
-  return name.length > 14 ? `${name.slice(0, 14)}…` : name
+function truncName(name: string, max = 12): string {
+  return name.length > max ? `${name.slice(0, max)}…` : name
 }
 
 function modelCategory(n: ITopologyNode): string {
@@ -293,33 +434,27 @@ function renderGraph() {
       padding: 24,
       data: toGraphData(topoData.value),
       node: {
-        type: 'rect',
+        type: 'card-node',
         style: (d: NodeData) => {
           const { info, color } = d.data as { info: ITopologyNode; color: string }
           return {
-            size: [176, 44],
-            fill: '#ffffff',
-            stroke: info.is_center ? '#1677ff' : color,
-            lineWidth: info.is_center ? 2.5 : 1.2,
-            radius: 8,
-            shadowColor: info.is_center ? 'rgba(22, 119, 255, 0.25)' : 'rgba(0, 0, 0, 0.06)',
-            shadowBlur: info.is_center ? 12 : 4,
-            labelText: truncName(info.name),
-            labelPlacement: 'center',
-            labelFontSize: 12,
-            labelFontWeight: info.is_center ? 700 : 500,
-            labelFill: info.is_center ? '#1677ff' : '#1d2129',
-            badge: !info.is_center,
-            badgeText: info.model_code || 'CI',
-            badgePlacement: 'right-top',
-            badgeFontSize: 9,
-            badgeBackgroundColor: color,
-            badgePadding: [1, 4],
+            // dagre 布局与碰撞检测的节点尺寸
+            size: [CARD_W, CARD_H],
+            color,
+            isCenter: info.is_center,
+            name: info.name,
+            modelCode: info.model_code,
+            abbr: modelAbbr(info.model_code),
+            iconUri: brandIconDataUri(iconFor(info) ?? ''),
+            // 内置 icon/label/badge 全部关闭，视觉由 card-node 自绘
+            icon: false,
+            label: false,
+            badge: false,
           }
         },
         state: {
           active: { halo: true },
-          dim: { fillOpacity: 0.2, strokeOpacity: 0.2, labelFillOpacity: 0.2 },
+          dim: { fillOpacity: 0.15, strokeOpacity: 0.15, shadowBlur: 0 },
         },
       },
       edge: {
