@@ -15,8 +15,8 @@ export interface IBusinessApp {
   pipelines: Record<string, string>
   // 归属业务域（应用之上的唯一分组，v24）；未挂为 null
   business_id: number | null
-  // 依赖声明：[{type: internal, app_code} / {type: external, name, url}]
-  dependencies: Array<{ type: string; app_code?: string; name?: string; url?: string; note?: string }>
+  // 依赖声明：[{type: internal, app_code, env?} / {type: external, name, url, env?}]
+  dependencies: IAppDependency[]
   created_at: string
   updated_at: string
 }
@@ -26,6 +26,8 @@ export interface IAppDependency {
   app_code?: string
   name?: string
   url?: string
+  // 可选环境（env 标签值域）；留空 = 全环境通用
+  env?: string | null
   note?: string
 }
 

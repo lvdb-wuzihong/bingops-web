@@ -64,7 +64,7 @@
       </a-table>
     </a-card>
 
-    <a-modal v-model:visible="formVisible" :title="editingId ? '编辑应用' : '新增应用'" :width="600" :ok-loading="formLoading" @ok="handleSubmit">
+    <a-modal v-model:visible="formVisible" :title="editingId ? '编辑应用' : '新增应用'" :width="720" :ok-loading="formLoading" @ok="handleSubmit">
       <a-form :model="formData" :rules="formRules" layout="vertical" ref="formRef">
         <a-row :gutter="16">
           <a-col :span="12"><a-form-item field="app_code" label="应用编码"><a-input v-model="formData.app_code" placeholder="如：order-service" :disabled="!!editingId" /></a-form-item></a-col>
@@ -110,11 +110,17 @@
                 <a-select v-model="row.app_code" placeholder="选择依赖的应用" allow-search style="flex: 1">
                   <a-option v-for="a in dependencyAppOptionsFiltered" :key="a.id" :value="a.app_code">{{ a.name }}（{{ a.app_code }}）</a-option>
                 </a-select>
-                <a-input v-model="row.note" placeholder="备注（可选），如：调用订单服务" style="width: 180px" />
+                <a-select v-model="row.env" placeholder="全环境" allow-clear style="width: 110px">
+                  <a-option v-for="e in envOptions" :key="e" :value="e">{{ e }}</a-option>
+                </a-select>
+                <a-input v-model="row.note" placeholder="备注（可选）" style="width: 150px" />
               </template>
               <template v-else>
-                <a-input v-model="row.name" placeholder="名称，如 Nacos 注册/配置中心" style="flex: 1" />
+                <a-input v-model="row.name" placeholder="名称，如 Nacos" style="flex: 1" />
                 <a-input v-model="row.url" placeholder="地址，如 nacos.gke.svc:8848" style="flex: 1" />
+                <a-select v-model="row.env" placeholder="全环境" allow-clear style="width: 110px">
+                  <a-option v-for="e in envOptions" :key="e" :value="e">{{ e }}</a-option>
+                </a-select>
                 <a-input v-model="row.note" placeholder="备注（可选）" style="width: 130px" />
               </template>
               <a-button type="text" status="danger" @click="dependencyRows.splice(idx, 1)"><template #icon><icon-delete /></template></a-button>
@@ -256,7 +262,7 @@ const formRules = { app_code: [{ required: true, message: '请输入编码' }], 
 const pipelineRows = ref<Array<{ env: string; url: string }>>([])
 
 // 依赖声明编辑行（随 BusinessAppCreate/Update.dependencies 整体提交，声明式无缓存）
-type DependencyRow = { type: 'internal' | 'external'; app_code: string; name: string; url: string; note: string }
+type DependencyRow = { type: 'internal' | 'external'; app_code: string; name: string; url: string; env: string; note: string }
 const dependencyRows = ref<DependencyRow[]>([])
 const dependencyAppOptions = ref<IBusinessApp[]>([])
 // 排除自己：应用不能依赖自身
@@ -277,7 +283,7 @@ async function fetchDependencyOptions() {
 }
 
 function addDependencyRow() {
-  dependencyRows.value.push({ type: 'internal', app_code: '', name: '', url: '', note: '' })
+  dependencyRows.value.push({ type: 'internal', app_code: '', name: '', url: '', env: '', note: '' })
 }
 
 // 切换类型清空该行字段，避免残留跨类型数据
@@ -285,21 +291,27 @@ function onDependencyTypeChange(row: DependencyRow) {
   row.app_code = ''
   row.name = ''
   row.url = ''
+  row.env = ''
 }
 
-// 收敛为提交契约：internal 必填 app_code；external name/url 至少一个；空 note 剥离
+// 收敛为提交契约：internal 必填 app_code；external name/url 至少一个；空 env/note 剥离（留空 = 全环境通用）
 function buildDependencies(): IAppDependency[] | null {
   const deps: IAppDependency[] = []
   for (const row of dependencyRows.value) {
     const note = row.note.trim()
+    const env = row.env.trim()
     if (row.type === 'internal') {
       if (!row.app_code) { Message.warning('内部依赖需选择应用'); return null }
-      deps.push(note ? { type: 'internal', app_code: row.app_code, note } : { type: 'internal', app_code: row.app_code })
+      const dep: IAppDependency = { type: 'internal', app_code: row.app_code }
+      if (env) dep.env = env
+      if (note) dep.note = note
+      deps.push(dep)
     } else {
       if (!row.name.trim() && !row.url.trim()) { Message.warning('外部依赖需至少填写名称或地址'); return null }
       const dep: IAppDependency = { type: 'external' }
       if (row.name.trim()) dep.name = row.name.trim()
       if (row.url.trim()) dep.url = row.url.trim()
+      if (env) dep.env = env
       if (note) dep.note = note
       deps.push(dep)
     }
@@ -326,6 +338,7 @@ function handleEdit(record: IBusinessApp) {
     app_code: d.app_code || '',
     name: d.name || '',
     url: d.url || '',
+    env: d.env || '',
     note: d.note || '',
   }))
   fetchDependencyOptions()
