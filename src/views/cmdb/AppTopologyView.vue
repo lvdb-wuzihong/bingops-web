@@ -1,49 +1,54 @@
 <template>
-  <a-drawer v-model:visible="visibleProxy" :width="980" :footer="false" unmount-on-close>
-    <template #title>
-      <a-space wrap>
-        <span>应用关系视图</span>
-        <!-- 环境筛选：按环境标签过滤资源节点（后端 ?env=）；候选来自标签定义 env 允许值 -->
-        <a-select v-model="envFilter" size="small" placeholder="全部环境" allow-clear style="width: 120px">
-          <a-option v-for="e in envOptions" :key="e" :value="e">{{ e }}</a-option>
-        </a-select>
-        <template v-if="topo">
-          <a-tag size="small" color="arcoblue">依赖 {{ relCount('depends_on') }}</a-tag>
-          <a-tag size="small" color="green">被依赖 {{ relCount('depended_by') }}</a-tag>
-          <a-tag size="small" color="gold">外部 {{ relCount('external_dependency') }}</a-tag>
-          <a-tag size="small" color="gray">承载资源 {{ relCount('hosts_resource') }}</a-tag>
-          <a-tag v-if="relCount('shared_resource')" size="small" color="orangered">共享 {{ relCount('shared_resource') }}</a-tag>
-        </template>
-      </a-space>
-    </template>
+  <div class="app-topology">
+    <a-card :bordered="false" class="list-card">
+      <div class="topo-header">
+        <a-space size="medium" wrap>
+          <a-button @click="router.push({ name: 'BusinessAppList' })">
+            <template #icon><icon-left /></template>返回列表
+          </a-button>
+          <span class="panel-title">应用关系视图<span v-if="appName" class="app-name"> - {{ appName }}</span></span>
+          <!-- 环境筛选：按环境标签过滤资源节点（后端 ?env=）；候选来自标签定义 env 允许值 -->
+          <a-select v-model="envFilter" size="small" placeholder="全部环境" allow-clear style="width: 120px">
+            <a-option v-for="e in envOptions" :key="e" :value="e">{{ e }}</a-option>
+          </a-select>
+          <a-button size="small" @click="fitView">适配视图</a-button>
+        </a-space>
+        <a-space size="small" wrap>
+          <template v-if="topo">
+            <a-tag size="small" color="arcoblue">依赖 {{ relCount('depends_on') }}</a-tag>
+            <a-tag size="small" color="green">被依赖 {{ relCount('depended_by') }}</a-tag>
+            <a-tag size="small" color="gold">外部 {{ relCount('external_dependency') }}</a-tag>
+            <a-tag size="small" color="gray">承载资源 {{ relCount('hosts_resource') }}</a-tag>
+            <a-tag v-if="relCount('shared_resource')" size="small" color="orangered">共享 {{ relCount('shared_resource') }}</a-tag>
+          </template>
+        </a-space>
+      </div>
 
-    <a-spin :loading="loading" style="width: 100%">
-      <div ref="chartRef" class="app-topo-chart"></div>
-      <p class="topo-tip">
-        外部系统在顶、应用居中、承载资源在底；实线 = 依赖 / 被依赖 / 承载，橙色虚线 = 共享资源（存储级耦合信号）；双击应用节点无展开动作，层级由深度 1 聚合决定。
-      </p>
-    </a-spin>
-  </a-drawer>
+      <a-spin :loading="loading" style="width: 100%">
+        <div ref="chartRef" class="app-topo-chart"></div>
+        <p class="topo-tip">
+          默认 1:1 渲染保证文字可读，超宽时拖拽平移或点「适配视图」总览；实线 = 依赖 / 被依赖 / 承载，橙色虚线 = 共享资源（存储级耦合信号）。
+        </p>
+      </a-spin>
+    </a-card>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { IconLeft } from '@arco-design/web-vue/es/icon'
 import { BaseNode, ExtensionCategory, Graph, register } from '@antv/g6'
 import type { DisplayObject, Group } from '@antv/g'
 import type { BaseNodeStyleProps, EdgeData, ElementDatum, IElementEvent, NodeData } from '@antv/g6'
-import { getAppTopology } from '../../../api/app'
-import type { AppTopologyRelation, IAppTopologyData, IAppTopologyEdge, IAppTopologyNode } from '../../../api/app'
-import { iconUriFor } from '../../../assets/brand-icons'
-import { MODEL_LAYER_MAP } from '../../../types/model'
-import { getTagDefinitions } from '../../../api/tag'
+import { getAppTopology } from '../../api/app'
+import type { AppTopologyRelation, IAppTopologyData, IAppTopologyEdge, IAppTopologyNode } from '../../api/app'
+import { iconUriFor } from '../../assets/brand-icons'
+import { MODEL_LAYER_MAP } from '../../types/model'
+import { getTagDefinitions } from '../../api/tag'
 
-const props = defineProps<{ appId: number | null; visible: boolean }>()
-const emit = defineEmits<{ (e: 'update:visible', v: boolean): void }>()
-
-const visibleProxy = computed({
-  get: () => props.visible,
-  set: (v: boolean) => emit('update:visible', v),
-})
+const route = useRoute()
+const router = useRouter()
 
 // ── BlueKing 式卡片节点（应用拓扑版：类型图标块 + 名称/副行两行） ──
 const CARD_W = 200
@@ -145,6 +150,8 @@ let graph: Graph | null = null
 const envFilter = ref<string | undefined>()
 const envOptions = ref<string[]>([])
 
+const appName = computed(() => topo.value?.nodes.find(n => n.is_center)?.name || '')
+
 function relCount(r: AppTopologyRelation): number {
   return topo.value?.edges.filter(e => e.relation === r).length ?? 0
 }
@@ -161,7 +168,8 @@ function nodeSubText(n: IAppTopologyNode): string {
   if (n.type === 'app') return n.app_code || '应用'
   if (n.type === 'external') return '外部依赖'
   const parts = [n.layer ? (MODEL_LAYER_MAP[n.layer]?.text || n.layer) : '资源']
-  if (n.env) parts.push(n.env)
+  // 未打 env 标签 = 不区分环境（任何环境视角下都存在），比 "-" 更有信息量
+  parts.push(n.env ?? '跨环境')
   if (n.shared) parts.push('共享')
   return parts.join(' · ')
 }
@@ -226,7 +234,7 @@ function nodeTooltip(n: IAppTopologyNode): string {
     lines.push(
       `模型：${n.model_code || '-'}`,
       `分层：${n.layer ? (MODEL_LAYER_MAP[n.layer]?.text || n.layer) : '-'}`,
-      `厂商：${n.provider || '-'}　环境：${n.env || '-'}`,
+      `厂商：${n.provider || '-'}　环境：${n.env || '跨环境'}`,
     )
     if (n.shared) lines.push('<span style="color:#f77234">⚠ 该资源被多个应用共享</span>')
   }
@@ -243,7 +251,8 @@ function renderGraph() {
   graph = new Graph({
     container: chartRef.value,
     autoResize: true,
-    autoFit: 'view',
+    // 不用 autoFit：view/center 各档位都会把超宽图整图缩进视口导致文字不可读；
+    // render 后强制 zoomTo(1) + fitCenter：卡片 1:1、中心应用居中，两侧溢出由拖拽查看
     padding: 24,
     data: toGraphData(topo.value),
     node: {
@@ -298,8 +307,8 @@ function renderGraph() {
     layout: {
       type: 'antv-dagre',
       rankdir: 'TB',
-      nodesep: 18,
-      ranksep: 64,
+      nodesep: 24,
+      ranksep: 72,
       animation: true,
     },
     behaviors: [
@@ -319,50 +328,66 @@ function renderGraph() {
       },
     }],
   })
-  graph.render()
+  // 强制 1:1 渲染后把图心对准视口中心；超宽部分拖拽平移查看，「适配视图」按钮做总览
+  graph.render().then(async () => {
+    await graph!.zoomTo(1)
+    await graph!.fitCenter()
+  })
 }
 
-watch(() => props.visible, async (v) => {
-  if (v && props.appId) {
-    loading.value = true
-    envFilter.value = undefined
-    try {
-      // 并发：拓扑（全部环境）+ 环境候选（标签定义 env 允许值，与流水线编辑器同源）
-      const [topoRes, tagDefs] = await Promise.all([
-        getAppTopology(props.appId),
-        getTagDefinitions({ page: 1, page_size: 100 }).catch(() => null),
-      ])
-      topo.value = topoRes.data
-      envOptions.value = tagDefs?.data.items.find(d => d.tag_key === 'env')?.allowed_values ?? []
-      await nextTick()
-      renderGraph()
-    } catch { /* 拦截器已提示 */ } finally { loading.value = false }
-  }
-  if (!v) {
-    graph?.destroy()
-    graph = null
-    topo.value = null
-  }
-})
+function fitView() {
+  graph?.fitView()
+}
+
+const appId = computed(() => Number(route.params.id))
+
+async function fetchAll() {
+  if (!appId.value) return
+  loading.value = true
+  envFilter.value = undefined
+  try {
+    // 并发：拓扑（全部环境）+ 环境候选（标签定义 env 允许值，与流水线编辑器同源）
+    const [topoRes, tagDefs] = await Promise.all([
+      getAppTopology(appId.value),
+      getTagDefinitions({ page: 1, page_size: 100 }).catch(() => null),
+    ])
+    topo.value = topoRes.data
+    envOptions.value = tagDefs?.data.items.find(d => d.tag_key === 'env')?.allowed_values ?? []
+    await nextTick()
+    renderGraph()
+  } catch { /* 拦截器已提示 */ } finally { loading.value = false }
+}
 
 // 切换环境：带 ?env= 重拉资源节点（应用/外部节点不受环境影响）
 watch(envFilter, async () => {
-  if (!props.visible || !props.appId) return
+  if (!appId.value) return
   loading.value = true
   try {
-    topo.value = (await getAppTopology(props.appId, envFilter.value)).data
+    topo.value = (await getAppTopology(appId.value, envFilter.value)).data
     await nextTick()
     renderGraph()
   } catch { /* 拦截器已提示 */ } finally { loading.value = false }
 })
+
+onMounted(fetchAll)
 </script>
 
 <style scoped lang="scss">
-@use '../../../assets/styles/variables' as *;
+@use '../../assets/styles/variables' as *;
+
+.topo-header {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: $spacing-sm; flex-wrap: wrap;
+  margin-bottom: $spacing-md;
+}
+.panel-title { font-size: $font-size-lg; font-weight: 600; color: $text-primary; }
+.app-name { font-weight: 500; }
 
 .app-topo-chart {
   width: 100%;
-  height: 640px;
+  // 全内容区高度自适应（页面形态优于抽屉的核心收益）
+  height: calc(100vh - 300px);
+  min-height: 560px;
   background: $bg-card;
   border: 1px solid $border-color-light;
   border-radius: $radius-md;

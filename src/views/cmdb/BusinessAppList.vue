@@ -53,7 +53,7 @@
         </template>
         <template #actions="{ record }">
           <a-space>
-            <a-button type="text" size="small" @click="openTopology(record)"><template #icon><icon-branch /></template>拓扑</a-button>
+            <a-button type="text" size="small" @click="$router.push({ name: 'AppTopology', params: { id: String(record.id) } })"><template #icon><icon-branch /></template>拓扑</a-button>
             <a-button type="text" size="small" @click="openResources(record)"><template #icon><icon-apps /></template>资源</a-button>
             <a-button type="text" size="small" @click="handleEdit(record)"><template #icon><icon-edit /></template></a-button>
             <a-popconfirm content="确定删除该应用？" @ok="handleDelete(record.id)">
@@ -134,9 +134,6 @@
       </a-form>
     </a-modal>
 
-    <!-- 应用关系视图抽屉 -->
-    <AppTopologyDrawer v-model:visible="topoVisible" :app-id="topoAppId" />
-
     <!-- 业务域管理弹窗 -->
     <a-modal v-model:visible="domainModalVisible" title="业务域管理" :width="680" :footer="false" unmount-on-close>
       <div class="domain-toolbar">
@@ -189,7 +186,8 @@
         <template #model_code="{ record }"><a-tag size="small" color="arcoblue">{{ record.model_code }}</a-tag></template>
         <template #env="{ record }">
           <a-tag v-if="record.env" size="small" :color="envColor(record.env)">{{ record.env }}</a-tag>
-          <span v-else>-</span>
+          <!-- 未打 env 标签 = 不区分环境（任何环境视角下都存在） -->
+          <a-tag v-else size="small" color="gray">跨环境</a-tag>
         </template>
         <template #provider="{ record }">{{ providerMap[record.provider] || record.provider }}</template>
         <template #status="{ record }">{{ record.status ? (statusMap[record.status] || record.status) : '无状态' }}</template>
@@ -219,7 +217,6 @@ import { IconPlus, IconEdit, IconDelete, IconApps, IconCopy, IconBranch, IconSto
 import * as appApi from '../../api/app'
 import type { IBusinessApp, IAppResource, IBusinessDomain, IAppDependency } from '../../api/app'
 import { getTagDefinitions } from '../../api/tag'
-import AppTopologyDrawer from './components/AppTopologyDrawer.vue'
 
 const providerMap: Record<string, string> = { aliyun: '阿里云', aws: 'AWS', gcp: '谷歌云', k8s: 'Kubernetes', manual: '手动录入' }
 const statusMap: Record<string, string> = { running: '运行中', ready: '就绪', not_ready: '未就绪', stopped: '已停止', pending: '启动中', failed: '异常', succeeded: '已完成', maintenance: '维护中', unknown: '未知' }
@@ -529,15 +526,6 @@ async function handleDomainSubmit() {
     domainFormVisible.value = false
     fetchDomains()
   } catch { /* 拦截器已提示 */ } finally { domainFormLoading.value = false }
-}
-
-// ========== 应用关系视图 ==========
-const topoVisible = ref(false)
-const topoAppId = ref<number | null>(null)
-
-function openTopology(record: IBusinessApp) {
-  topoAppId.value = record.id
-  topoVisible.value = true
 }
 </script>
 

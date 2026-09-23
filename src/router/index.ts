@@ -82,6 +82,12 @@ const routes: RouteRecordRaw[] = [
             meta: { title: '业务应用' },
           },
           {
+            path: 'apps/:id/topology',
+            name: 'AppTopology',
+            component: () => import('../views/cmdb/AppTopologyView.vue'),
+            meta: { title: '应用关系视图', hidden: true },
+          },
+          {
             path: 'changes',
             name: 'ChangeLogList',
             component: () => import('../views/cmdb/ChangeLogList.vue'),
