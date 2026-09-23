@@ -264,7 +264,15 @@ const dependencyAppOptionsFiltered = computed(() => dependencyAppOptions.value.f
 
 async function fetchDependencyOptions() {
   try {
-    dependencyAppOptions.value = (await appApi.getApps({ page: 1, page_size: 200 })).data.items
+    // 后端 page_size 上限 100，分页累加取全（供依赖下拉；应用量增长时不漏选项）
+    const first = await appApi.getApps({ page: 1, page_size: 100 })
+    const all = [...first.data.items]
+    const total = first.data.pagination.total
+    for (let p = 2; all.length < total && p <= 5; p++) {
+      const res = await appApi.getApps({ page: p, page_size: 100 })
+      all.push(...res.data.items)
+    }
+    dependencyAppOptions.value = all
   } catch { /* ignore */ }
 }
 
