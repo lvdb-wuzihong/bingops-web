@@ -21,6 +21,14 @@ export interface IBusinessApp {
   updated_at: string
 }
 
+export interface IAppDependency {
+  type: string
+  app_code?: string
+  name?: string
+  url?: string
+  note?: string
+}
+
 export interface IBusinessAppCreate {
   app_code: string
   name: string
@@ -32,6 +40,8 @@ export interface IBusinessAppCreate {
   repo_url?: string | null
   pipelines?: Record<string, string>
   business_id?: number | null
+  // 依赖声明：[{type: internal, app_code} / {type: external, name, url}]；整体提交，[] 即清空
+  dependencies?: IAppDependency[]
 }
 
 export interface IBusinessAppUpdate {
@@ -44,6 +54,8 @@ export interface IBusinessAppUpdate {
   repo_url?: string | null
   pipelines?: Record<string, string>
   business_id?: number | null
+  // 依赖声明：整体提交，[] 即清空
+  dependencies?: IAppDependency[]
 }
 
 export interface IBusinessAppQuery extends IPageParams {

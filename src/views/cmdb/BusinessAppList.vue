@@ -98,6 +98,32 @@
             </a-button>
           </div>
         </a-form-item>
+        <a-form-item label="依赖声明（应用拓扑数据源；保存后即时生效）">
+          <div class="dependency-editor">
+            <div v-for="(row, idx) in dependencyRows" :key="idx" class="dependency-row">
+              <a-select v-model="row.type" placeholder="类型" style="width: 120px" @change="onDependencyTypeChange(row)">
+                <a-option value="internal">内部应用</a-option>
+                <a-option value="external">外部系统</a-option>
+              </a-select>
+              <template v-if="row.type === 'internal'">
+                <!-- 数据源为全部应用（排除自己）；app_code 存在性由后端校验，前端不预检 -->
+                <a-select v-model="row.app_code" placeholder="选择依赖的应用" allow-search style="flex: 1">
+                  <a-option v-for="a in dependencyAppOptionsFiltered" :key="a.id" :value="a.app_code">{{ a.name }}（{{ a.app_code }}）</a-option>
+                </a-select>
+                <a-input v-model="row.note" placeholder="备注（可选），如：调用订单服务" style="width: 180px" />
+              </template>
+              <template v-else>
+                <a-input v-model="row.name" placeholder="名称，如 Nacos 注册/配置中心" style="flex: 1" />
+                <a-input v-model="row.url" placeholder="地址，如 nacos.gke.svc:8848" style="flex: 1" />
+                <a-input v-model="row.note" placeholder="备注（可选）" style="width: 130px" />
+              </template>
+              <a-button type="text" status="danger" @click="dependencyRows.splice(idx, 1)"><template #icon><icon-delete /></template></a-button>
+            </div>
+            <a-button type="dashed" size="small" @click="addDependencyRow">
+              <template #icon><icon-plus /></template>添加依赖
+            </a-button>
+          </div>
+        </a-form-item>
         <a-form-item field="description" label="描述"><a-textarea v-model="formData.description" placeholder="可选" :auto-size="{ minRows: 2, maxRows: 4 }" /></a-form-item>
       </a-form>
     </a-modal>
@@ -185,7 +211,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconEdit, IconDelete, IconApps, IconCopy, IconBranch, IconStorage, IconRefresh } from '@arco-design/web-vue/es/icon'
 import * as appApi from '../../api/app'
-import type { IBusinessApp, IAppResource, IBusinessDomain } from '../../api/app'
+import type { IBusinessApp, IAppResource, IBusinessDomain, IAppDependency } from '../../api/app'
 import { getTagDefinitions } from '../../api/tag'
 import AppTopologyDrawer from './components/AppTopologyDrawer.vue'
 
@@ -229,10 +255,56 @@ const formRules = { app_code: [{ required: true, message: '请输入编码' }], 
 // 流水线编辑行（提交时收敛为 {env: url} map）
 const pipelineRows = ref<Array<{ env: string; url: string }>>([])
 
+// 依赖声明编辑行（随 BusinessAppCreate/Update.dependencies 整体提交，声明式无缓存）
+type DependencyRow = { type: 'internal' | 'external'; app_code: string; name: string; url: string; note: string }
+const dependencyRows = ref<DependencyRow[]>([])
+const dependencyAppOptions = ref<IBusinessApp[]>([])
+// 排除自己：应用不能依赖自身
+const dependencyAppOptionsFiltered = computed(() => dependencyAppOptions.value.filter(a => a.id !== editingId.value))
+
+async function fetchDependencyOptions() {
+  try {
+    dependencyAppOptions.value = (await appApi.getApps({ page: 1, page_size: 200 })).data.items
+  } catch { /* ignore */ }
+}
+
+function addDependencyRow() {
+  dependencyRows.value.push({ type: 'internal', app_code: '', name: '', url: '', note: '' })
+}
+
+// 切换类型清空该行字段，避免残留跨类型数据
+function onDependencyTypeChange(row: DependencyRow) {
+  row.app_code = ''
+  row.name = ''
+  row.url = ''
+}
+
+// 收敛为提交契约：internal 必填 app_code；external name/url 至少一个；空 note 剥离
+function buildDependencies(): IAppDependency[] | null {
+  const deps: IAppDependency[] = []
+  for (const row of dependencyRows.value) {
+    const note = row.note.trim()
+    if (row.type === 'internal') {
+      if (!row.app_code) { Message.warning('内部依赖需选择应用'); return null }
+      deps.push(note ? { type: 'internal', app_code: row.app_code, note } : { type: 'internal', app_code: row.app_code })
+    } else {
+      if (!row.name.trim() && !row.url.trim()) { Message.warning('外部依赖需至少填写名称或地址'); return null }
+      const dep: IAppDependency = { type: 'external' }
+      if (row.name.trim()) dep.name = row.name.trim()
+      if (row.url.trim()) dep.url = row.url.trim()
+      if (note) dep.note = note
+      deps.push(dep)
+    }
+  }
+  return deps
+}
+
 function handleAdd() {
   editingId.value = null
   Object.assign(formData, { app_code: '', name: '', team: '', owner: '', department: '', repo_url: '', description: '', business_id: undefined })
   pipelineRows.value = []
+  dependencyRows.value = []
+  fetchDependencyOptions()
   formVisible.value = true
 }
 
@@ -240,6 +312,15 @@ function handleEdit(record: IBusinessApp) {
   editingId.value = record.id
   Object.assign(formData, { app_code: record.app_code, name: record.name, team: record.team || '', owner: record.owner || '', department: record.department || '', repo_url: record.repo_url || '', description: record.description || '', business_id: record.business_id ?? undefined })
   pipelineRows.value = Object.entries(record.pipelines || {}).map(([env, url]) => ({ env, url }))
+  // 依赖声明回显：GET /apps/{id} 已透出 dependencies（v24）
+  dependencyRows.value = (record.dependencies || []).map(d => ({
+    type: (d.type === 'external' ? 'external' : 'internal') as DependencyRow['type'],
+    app_code: d.app_code || '',
+    name: d.name || '',
+    url: d.url || '',
+    note: d.note || '',
+  }))
+  fetchDependencyOptions()
   formVisible.value = true
 }
 
@@ -259,17 +340,19 @@ async function handleSubmit() {
   if (errors) return
   const pipelines = buildPipelines()
   if (!pipelines) return
+  const dependencies = buildDependencies()
+  if (!dependencies) return
   formLoading.value = true
   try {
     if (editingId.value) {
-      await appApi.updateApp(editingId.value, { name: formData.name, team: formData.team || undefined, owner: formData.owner || undefined, department: formData.department || undefined, description: formData.description || undefined, repo_url: formData.repo_url || null, pipelines, business_id: formData.business_id ?? null })
+      await appApi.updateApp(editingId.value, { name: formData.name, team: formData.team || undefined, owner: formData.owner || undefined, department: formData.department || undefined, description: formData.description || undefined, repo_url: formData.repo_url || null, pipelines, business_id: formData.business_id ?? null, dependencies })
     } else {
-      await appApi.createApp({ app_code: formData.app_code, name: formData.name, team: formData.team || undefined, owner: formData.owner || undefined, department: formData.department || undefined, description: formData.description || undefined, repo_url: formData.repo_url || null, pipelines, business_id: formData.business_id ?? null })
+      await appApi.createApp({ app_code: formData.app_code, name: formData.name, team: formData.team || undefined, owner: formData.owner || undefined, department: formData.department || undefined, description: formData.description || undefined, repo_url: formData.repo_url || null, pipelines, business_id: formData.business_id ?? null, dependencies })
     }
     Message.success(editingId.value ? '编辑成功' : '新增成功')
     formVisible.value = false
     fetchData()
-  } catch { Message.error('操作失败') } finally { formLoading.value = false }
+  } catch { /* 拦截器已提示（后端 422/409：如 internal 依赖的 app_code 不存在） */ } finally { formLoading.value = false }
 }
 
 async function handleDelete(id: number) {
@@ -459,6 +542,11 @@ function openTopology(record: IBusinessApp) {
 .pipeline-editor {
   display: flex; flex-direction: column; gap: $spacing-xs; width: 100%;
   .pipeline-row { display: flex; gap: $spacing-xs; align-items: center; :deep(.arco-input-wrapper) { flex: 1; } }
+}
+
+.dependency-editor {
+  display: flex; flex-direction: column; gap: $spacing-xs; width: 100%;
+  .dependency-row { display: flex; gap: $spacing-xs; align-items: center; }
 }
 
 .domain-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: $spacing-sm; }
