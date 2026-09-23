@@ -114,3 +114,84 @@ export function deleteResource(id: number) {
 export function getResourceStats() {
   return request.get<IResourceStats>('/api/v1/cmdb/resources/stats')
 }
+
+// ========== 全局搜索（工作台搜索页，跨应用/资源分组聚合） ==========
+
+export interface ISearchApp {
+  id: number
+  app_code: string
+  name: string
+  owner: string | null
+  team: string | null
+}
+
+export interface ISearchResource {
+  id: number
+  name: string
+  model_id: number
+  model_code: string | null
+  provider: string | null
+  region: string | null
+  status: string | null
+}
+
+export interface IGlobalSearchResult {
+  apps: ISearchApp[]
+  resources: ISearchResource[]
+}
+
+// q 覆盖名称/实例 ID；资源侧动态字段值（IP/连接地址等）恒参与匹配；exact=true 为等值
+export function globalSearch(params: { q: string; exact?: boolean; limit?: number }) {
+  return request.get<IGlobalSearchResult>('/api/v1/cmdb/search', { params })
+}
+
+// ========== 我的关注（资源收藏） ==========
+
+export interface IFavoriteItem {
+  // 资源 ID
+  id: number
+  name: string
+  model_id: number
+  model_code: string | null
+  provider: string | null
+  region: string | null
+  status: string | null
+  favorited_at: string | null
+}
+
+export function listFavorites() {
+  return request.get<IFavoriteItem[]>('/api/v1/cmdb/resources/favorites')
+}
+
+// 收藏（幂等）
+export function addFavorite(resourceId: number) {
+  return request.put<null>(`/api/v1/cmdb/resources/${resourceId}/favorite`)
+}
+
+export function removeFavorite(resourceId: number) {
+  return request.delete<null>(`/api/v1/cmdb/resources/${resourceId}/favorite`)
+}
+
+// ========== 资产总览聚合（分类→模型→存活资源数，单请求渲染整页） ==========
+
+export interface IModelOverviewItem {
+  id: number
+  code: string
+  name: string
+  icon: string | null
+  description: string | null
+  is_enabled: boolean
+  resource_count: number
+}
+
+export interface IModelOverviewCategory {
+  id: number
+  code: string
+  name: string
+  icon: string | null
+  models: IModelOverviewItem[]
+}
+
+export function getModelsOverview() {
+  return request.get<IModelOverviewCategory[]>('/api/v1/cmdb/models/overview')
+}

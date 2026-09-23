@@ -49,7 +49,7 @@ const routes: RouteRecordRaw[] = [
             path: 'search',
             name: 'AssetSearch',
             component: () => import('../views/cmdb/AssetSearchView.vue'),
-            meta: { title: '资产搜索', hidden: true },
+            meta: { title: '资产搜索' },
           },
           {
             path: 'resources',

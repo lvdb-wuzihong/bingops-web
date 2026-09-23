@@ -43,6 +43,7 @@
           <template #icon><icon-storage /></template>
           <template #title>CMDB 资源管理</template>
           <a-menu-item key="AssetOverview">资产总览</a-menu-item>
+          <a-menu-item key="AssetSearch">资产搜索</a-menu-item>
           <a-menu-item key="ModelManagement">模型管理</a-menu-item>
           <a-menu-item key="TagManagement">标签管理</a-menu-item>
           <a-menu-item key="BusinessAppList">业务应用</a-menu-item>

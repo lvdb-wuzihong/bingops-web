@@ -8,111 +8,162 @@
         </a-button>
         <a-input-search
           v-model="keywordInput"
-          placeholder="搜索资产：名称 / IP / 实例 ID / 业务 / 负责人"
+          placeholder="搜索资产：名称 / IP / 实例 ID / 主机名 / 应用"
           size="large"
           allow-clear
           search-button
           @search="doSearch"
         />
+        <a-checkbox v-model="exact" @change="onExactChange">精确匹配</a-checkbox>
       </div>
     </a-card>
 
     <a-spin :loading="loading" style="width: 100%">
-      <a-empty v-if="!keyword" description="输入关键词搜索资产" class="search-empty" />
-      <a-empty v-else-if="!results.length" description="无匹配资产" class="search-empty" />
-      <div v-else class="result-layout">
-        <!-- 左：结果列表 -->
-        <a-card :bordered="false" class="result-card">
-          <div class="result-count">共 {{ results.length }} 条匹配结果</div>
-          <div class="result-list">
-            <div
-              v-for="r in pageItems"
-              :key="r.id"
-              class="result-item"
-              :class="{ active: selected?.id === r.id }"
-              @click="selected = r"
-            >
-              <div class="result-name">{{ r.name }}</div>
-              <div class="result-meta">
-                {{ r.model_code || '未知模型' }}
-                <template v-if="r.provider_id"> · {{ r.provider_id }}</template>
-                <template v-if="r.provider"> · {{ r.provider }}</template>
+      <a-empty v-if="!keyword" description="输入关键词搜索资产与应用" class="search-empty" />
+      <a-empty v-else-if="!result" description="无匹配结果" class="search-empty" />
+      <a-card v-else :bordered="false" class="result-card">
+        <a-tabs v-model:active-key="activeGroup">
+          <a-tab-pane key="resources" :title="`资源（${result.resources.length}）`">
+            <div class="group-layout">
+              <div class="group-list">
+                <div
+                  v-for="r in result.resources"
+                  :key="r.id"
+                  class="result-item"
+                  :class="{ active: selectedType === 'resource' && selectedResourceId === r.id }"
+                  @click="selectResource(r)"
+                >
+                  <div class="result-name">{{ r.name }}</div>
+                  <div class="result-meta">
+                    {{ r.model_code || '未知模型' }}
+                    <template v-if="r.provider"> · {{ r.provider }}</template>
+                    <template v-if="r.region"> · {{ r.region }}</template>
+                  </div>
+                </div>
+                <div v-if="!result.resources.length" class="group-empty">无匹配资源</div>
               </div>
+              <a-card :bordered="false" class="detail-panel">
+                <template v-if="selectedResource">
+                  <div class="detail-title">{{ selectedResource.name }}</div>
+                  <a-descriptions :column="1" size="medium" class="detail-desc">
+                    <a-descriptions-item label="模型">{{ selectedResource.model_code || '-' }}</a-descriptions-item>
+                    <a-descriptions-item label="云厂商">{{ selectedResource.provider || '-' }}</a-descriptions-item>
+                    <a-descriptions-item label="区域">{{ selectedResource.region || '-' }}</a-descriptions-item>
+                    <a-descriptions-item label="状态">
+                      <a-tag size="small" :color="statusMeta(selectedResource.status).color">{{ statusMeta(selectedResource.status).text }}</a-tag>
+                    </a-descriptions-item>
+                  </a-descriptions>
+                  <a-button type="primary" long @click="router.push({ name: 'ResourceDetail', params: { id: String(selectedResource.id) } })">
+                    <template #icon><icon-eye /></template>打开资源详情
+                  </a-button>
+                </template>
+                <a-empty v-else description="点击左侧结果查看摘要" />
+              </a-card>
             </div>
-          </div>
-          <div class="result-pager">
-            <a-pagination v-model:current="page" :page-size="PAGE_SIZE" :total="results.length" simple show-total />
-          </div>
-        </a-card>
+            <p v-if="result.resources.length >= searchLimit" class="group-tip">仅展示前 {{ searchLimit }} 条命中，更多请到「资源列表」按模型筛选</p>
+          </a-tab-pane>
 
-        <!-- 右：属性摘要 -->
-        <a-card :bordered="false" class="detail-card">
-          <template v-if="selected">
-            <div class="detail-title">{{ selected.name }}</div>
-            <a-descriptions :column="1" size="medium" class="detail-desc">
-              <a-descriptions-item label="模型">{{ selected.model_code || '-' }}</a-descriptions-item>
-              <a-descriptions-item label="云厂商">{{ selected.provider || '-' }}</a-descriptions-item>
-              <a-descriptions-item label="区域">{{ selected.region || '-' }}</a-descriptions-item>
-              <a-descriptions-item label="状态">
-                <a-tag size="small" :color="statusMeta(selected.status).color">{{ statusMeta(selected.status).text }}</a-tag>
-              </a-descriptions-item>
-              <a-descriptions-item label="实例 ID">{{ selected.provider_id || '-' }}</a-descriptions-item>
-              <a-descriptions-item v-if="selected.labels && Object.keys(selected.labels).length" label="标签">
-                <a-space wrap size="mini">
-                  <a-tag v-for="(v, k) in selected.labels" :key="k" size="small">{{ k }}: {{ v }}</a-tag>
-                </a-space>
-              </a-descriptions-item>
-            </a-descriptions>
-            <a-button type="primary" long @click="openDetail(selected.id)">
-              <template #icon><icon-eye /></template>打开资源详情
-            </a-button>
-          </template>
-          <a-empty v-else description="点击左侧结果查看摘要" />
-        </a-card>
-      </div>
+          <a-tab-pane key="apps" :title="`应用（${result.apps.length}）`">
+            <div class="group-layout">
+              <div class="group-list">
+                <div
+                  v-for="a in result.apps"
+                  :key="a.id"
+                  class="result-item"
+                  :class="{ active: selectedType === 'app' && selectedAppId === a.id }"
+                  @click="selectApp(a)"
+                >
+                  <div class="result-name">{{ a.name }}</div>
+                  <div class="result-meta">
+                    {{ a.app_code }}
+                    <template v-if="a.owner"> · 负责人 {{ a.owner }}</template>
+                    <template v-if="a.team"> · {{ a.team }}</template>
+                  </div>
+                </div>
+                <div v-if="!result.apps.length" class="group-empty">无匹配应用</div>
+              </div>
+              <a-card :bordered="false" class="detail-panel">
+                <template v-if="selectedApp">
+                  <div class="detail-title">{{ selectedApp.name }}</div>
+                  <a-descriptions :column="1" size="medium" class="detail-desc">
+                    <a-descriptions-item label="应用编码">
+                      <a-tag size="small" color="arcoblue">{{ selectedApp.app_code }}</a-tag>
+                    </a-descriptions-item>
+                    <a-descriptions-item label="负责人">{{ selectedApp.owner || '-' }}</a-descriptions-item>
+                    <a-descriptions-item label="团队">{{ selectedApp.team || '-' }}</a-descriptions-item>
+                  </a-descriptions>
+                  <a-button long @click="router.push('/cmdb/apps')">
+                    <template #icon><icon-apps /></template>前往业务应用
+                  </a-button>
+                </template>
+                <a-empty v-else description="点击左侧结果查看摘要" />
+              </a-card>
+            </div>
+            <p v-if="result.apps.length >= searchLimit" class="group-tip">仅展示前 {{ searchLimit }} 条命中，更多请到「业务应用」页搜索</p>
+          </a-tab-pane>
+        </a-tabs>
+      </a-card>
     </a-spin>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { IconLeft, IconEye } from '@arco-design/web-vue/es/icon'
-import { getResourceOptions } from '../../api/cmdb'
-import type { IResourceOption } from '../../api/cmdb'
+import { IconLeft, IconEye, IconApps } from '@arco-design/web-vue/es/icon'
+import { globalSearch } from '../../api/cmdb'
+import type { IGlobalSearchResult, ISearchApp, ISearchResource } from '../../api/cmdb'
 
 const route = useRoute()
 const router = useRouter()
 
 const keywordInput = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
 const keyword = ref('')
+const exact = ref(route.query.exact === '1')
 const loading = ref(false)
-const results = ref<IResourceOption[]>([])
-const selected = ref<IResourceOption | null>(null)
-const page = ref(1)
-// 结果集来自 options 轻量接口（keyword 覆盖 name/IP/labels/fields），前端切片分页
-const PAGE_SIZE = 20
+const result = ref<IGlobalSearchResult | null>(null)
+const activeGroup = ref<'resources' | 'apps'>('resources')
+const selectedType = ref<'resource' | 'app' | null>(null)
+const selectedResourceId = ref<number | null>(null)
+const selectedAppId = ref<number | null>(null)
+const selectedResource = ref<ISearchResource | null>(null)
+const selectedApp = ref<ISearchApp | null>(null)
+// 后端每分组上限 50，默认 20；「更多走对应域列表页」是后端语义
+const searchLimit = 20
 
-const pageItems = computed(() => results.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE))
+function selectResource(r: ISearchResource) {
+  selectedType.value = 'resource'
+  selectedResourceId.value = r.id
+  selectedResource.value = r
+}
+
+function selectApp(a: ISearchApp) {
+  selectedType.value = 'app'
+  selectedAppId.value = a.id
+  selectedApp.value = a
+}
 
 async function doSearch(v?: string | number | boolean) {
   const kw = String(v ?? keywordInput.value).trim()
   if (!kw) return
   keyword.value = kw
   keywordInput.value = kw
-  // 同步 URL（可刷新/分享），replace 不产生历史记录
-  router.replace({ query: { keyword: kw } })
+  // 同步 URL（可刷新/分享）；exact 参与回显
+  router.replace({ query: { keyword: kw, ...(exact.value ? { exact: '1' } : {}) } })
   loading.value = true
-  selected.value = null
-  page.value = 1
+  result.value = null
+  selectedType.value = null
+  selectedResource.value = null
+  selectedApp.value = null
   try {
-    results.value = (await getResourceOptions({ keyword: kw, limit: 200 })).data
-    if (results.value.length) selected.value = results.value[0]
+    result.value = (await globalSearch({ q: kw, exact: exact.value, limit: searchLimit })).data
+    // 默认激活有命中的分组（资源优先，与工作台心智一致）
+    activeGroup.value = result.value.resources.length ? 'resources' : 'apps'
   } catch { /* 拦截器已提示 */ } finally { loading.value = false }
 }
 
-function openDetail(id: number) {
-  router.push({ name: 'ResourceDetail', params: { id: String(id) } })
+function onExactChange() {
+  if (keyword.value) doSearch()
 }
 
 const STATUS_MAP: Record<string, { text: string; color: string }> = {
@@ -142,19 +193,23 @@ onMounted(() => {
 @use '../../assets/styles/variables' as *;
 
 .search-bar-card { margin-bottom: $spacing-md; }
-.search-bar { display: flex; gap: $spacing-sm; align-items: center; }
+.search-bar {
+  display: flex;
+  gap: $spacing-md;
+  align-items: center;
+
+  .arco-input-wrapper { flex: 1; }
+}
 .search-empty { margin: 48px 0; }
 
-.result-layout {
+.group-layout {
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: $spacing-md;
   align-items: start;
 }
 
-.result-count { font-size: $font-size-sm; color: $text-secondary; margin-bottom: $spacing-sm; }
-
-.result-list {
+.group-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -174,9 +229,10 @@ onMounted(() => {
 
 .result-name { font-weight: 500; color: $text-primary; }
 .result-meta { font-size: $font-size-xs; color: $text-secondary; margin-top: 2px; }
-.result-pager { margin-top: $spacing-sm; display: flex; justify-content: flex-end; }
+.group-empty { padding: 16px 0; text-align: center; color: $text-secondary; font-size: $font-size-sm; }
+.group-tip { margin-top: $spacing-sm; font-size: $font-size-xs; color: $text-secondary; }
 
-.detail-card { position: sticky; top: 16px; }
+.detail-panel { position: sticky; top: 16px; }
 .detail-title { font-size: $font-size-base; font-weight: 600; color: $text-primary; margin-bottom: $spacing-sm; }
 .detail-desc { margin-bottom: $spacing-md; }
 </style>

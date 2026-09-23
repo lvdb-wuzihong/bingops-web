@@ -5,6 +5,10 @@
         <template #icon><icon-left /></template>返回列表
       </a-button>
       <a-space>
+        <a-button :loading="favLoading" @click="toggleFavorite">
+          <template #icon><icon-star-fill v-if="isFavorited" /><icon-star v-else /></template>
+          {{ isFavorited ? '取消收藏' : '收藏' }}
+        </a-button>
         <a-button type="primary" @click="handleEdit">
           <template #icon><icon-edit /></template>编辑
         </a-button>
@@ -131,11 +135,11 @@
 import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
-import { IconLeft, IconEdit } from '@arco-design/web-vue/es/icon'
+import { IconLeft, IconEdit, IconStar, IconStarFill } from '@arco-design/web-vue/es/icon'
 import RelationView from './components/RelationView.vue'
 import TagView from './components/TagView.vue'
 import ChangeLogView from './components/ChangeLogView.vue'
-import { getResourceDetail, updateResource } from '../../api/cmdb'
+import { getResourceDetail, updateResource, listFavorites, addFavorite, removeFavorite } from '../../api/cmdb'
 import type { ICmdbResource, IResourceUpdate } from '../../api/cmdb'
 import { getResourceApps } from '../../api/app'
 import type { IResourceApp } from '../../api/app'
@@ -282,10 +286,40 @@ async function handleFormSubmit() {
 
 onMounted(() => {
   fetchDetail()
+  fetchFavoriteState()
 })
 
 // 点击关系表/拓扑中的关联资源跳转时，路由参数变化但组件被复用，需重拉数据
-watch(resourceId, () => fetchDetail())
+watch(resourceId, () => {
+  fetchDetail()
+  fetchFavoriteState()
+})
+
+// ── 我的关注（收藏） ──
+const isFavorited = ref(false)
+const favLoading = ref(false)
+
+async function fetchFavoriteState() {
+  try {
+    const items = (await listFavorites()).data
+    isFavorited.value = items.some(f => f.id === resourceId.value)
+  } catch { /* ignore */ }
+}
+
+async function toggleFavorite() {
+  favLoading.value = true
+  try {
+    if (isFavorited.value) {
+      await removeFavorite(resourceId.value)
+      isFavorited.value = false
+      Message.success('已取消收藏')
+    } else {
+      await addFavorite(resourceId.value)
+      isFavorited.value = true
+      Message.success('已收藏')
+    }
+  } catch { /* 拦截器已提示 */ } finally { favLoading.value = false }
+}
 </script>
 
 <style scoped lang="scss">

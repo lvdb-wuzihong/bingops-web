@@ -5,8 +5,8 @@
         <span class="panel-title">资产总览</span>
         <a-space size="medium">
           <span class="stat-item">资源 <b>{{ totalResources }}</b></span>
-          <span class="stat-item">模型 <b>{{ models.length }}</b></span>
-          <span class="stat-item">分类 <b>{{ categories.length }}</b></span>
+          <span class="stat-item">模型 <b>{{ allModels.length }}</b></span>
+          <span class="stat-item">分类 <b>{{ overview.length }}</b></span>
           <a-button size="small" @click="router.push('/cmdb/resources')">查看全部资源</a-button>
           <a-button size="small" @click="fetchAll">
             <template #icon><icon-refresh /></template>
@@ -47,54 +47,29 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { IconRefresh } from '@arco-design/web-vue/es/icon'
-import { getResourceStats } from '../../api/cmdb'
-import { getModelCategories, getModels } from '../../api/model'
-import type { IModel, IModelCategory } from '../../types/model'
+import { getModelsOverview } from '../../api/cmdb'
+import type { IModelOverviewCategory } from '../../api/cmdb'
 
 const router = useRouter()
 const loading = ref(true)
-const categories = ref<IModelCategory[]>([])
-const models = ref<IModel[]>([])
-// 模型实例计数：key 为 model_id 字符串（与 stats.by_model 一致）
-const byModel = ref<Record<string, number>>({})
+// 后端聚合接口：分类→模型→存活资源数一次返回（单请求渲染整页）
+const overview = ref<IModelOverviewCategory[]>([])
 
-const totalResources = computed(() => Object.values(byModel.value).reduce((a, b) => a + b, 0))
+const allModels = computed(() => overview.value.flatMap(c => c.models))
+const totalResources = computed(() => allModels.value.reduce((a, m) => a + m.resource_count, 0))
 
-// 分类分组矩阵：分类 → 该组模型（含实例计数）；未归属任何分类的模型兜底进「其他」
-const groups = computed(() => {
-  const known = new Set(categories.value.map(c => c.id))
-  const result = categories.value.map(cat => {
-    const ms = models.value.filter(m => m.category_id === cat.id)
-    return {
-      id: cat.id,
-      name: cat.name,
-      total: ms.reduce((acc, m) => acc + (byModel.value[String(m.id)] ?? 0), 0),
-      models: ms.map(m => ({ id: m.id, name: m.name, count: byModel.value[String(m.id)] ?? 0 })),
-    }
-  })
-  const orphan = models.value.filter(m => !known.has(m.category_id))
-  if (orphan.length) {
-    result.push({
-      id: -1,
-      name: '其他',
-      total: orphan.reduce((acc, m) => acc + (byModel.value[String(m.id)] ?? 0), 0),
-      models: orphan.map(m => ({ id: m.id, name: m.name, count: byModel.value[String(m.id)] ?? 0 })),
-    })
-  }
-  return result
-})
+// 分类分组矩阵：分类 → 该组模型（含存活资源计数）
+const groups = computed(() => overview.value.map(cat => ({
+  id: cat.id,
+  name: cat.name,
+  total: cat.models.reduce((a, m) => a + m.resource_count, 0),
+  models: cat.models.map(m => ({ id: m.id, name: m.name, count: m.resource_count })),
+})))
 
 async function fetchAll() {
   loading.value = true
   try {
-    const [cats, ms, stats] = await Promise.all([
-      getModelCategories(),
-      getModels(),
-      getResourceStats(),
-    ])
-    categories.value = cats.data
-    models.value = ms.data
-    byModel.value = stats.data.by_model ?? {}
+    overview.value = (await getModelsOverview()).data
   } catch { /* 拦截器已提示 */ } finally { loading.value = false }
 }
 
