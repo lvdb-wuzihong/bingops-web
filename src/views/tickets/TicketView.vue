@@ -265,6 +265,9 @@
         <a-form-item label="代码版本（git tag）" required>
           <a-input v-model="dispatchForm.code_ref" placeholder="如：v1.0.0" />
         </a-form-item>
+        <a-alert v-if="dispatchSecretsWarn.length" type="warning" class="secrets-warn">
+          工单下发链路不传递密钥：该 Runbook 的密钥入参 {{ dispatchSecretsWarn.join('、') }} 未预置默认 Vault 路径，执行将报 missing required secret，请到作业管理为该 Runbook 补 default_ref 或改用直接执行
+        </a-alert>
         <template v-for="(spec, key) in dispatchParamsSchema" :key="key">
           <a-form-item :label="spec.description || String(key)" :required="!!spec.required">
             <a-select
@@ -778,6 +781,17 @@ const canDispatch = computed(() =>
   detail.value?.status === 'open' && userStore.hasPermission('job:create'),
 )
 
+// §3.6 已知坑：工单自动下发路径不带 secrets，选中 runbook 的 secrets_schema 条目缺 default_ref 会执行报 missing required secret
+const dispatchSecretsWarn = computed(() => {
+  const rb = runbookOptions.value.find(r => r.id === dispatchForm.runbook_id)
+  const bad: string[] = []
+  for (const [k, v] of Object.entries((rb?.secrets_schema || {}) as Record<string, unknown>)) {
+    const spec = (v || {}) as { required?: boolean; default_ref?: string }
+    if (spec.required && !spec.default_ref) bad.push(k)
+  }
+  return bad
+})
+
 async function openDispatchModal() {
   Object.assign(dispatchForm, {
     runbook_id: undefined,
@@ -952,6 +966,8 @@ onMounted(async () => {
 .comment-input { display: flex; flex-direction: column; gap: $spacing-sm; align-items: flex-end; }
 
 .form-hint { font-size: $font-size-xs; color: $text-secondary; margin: -8px 0 12px; }
+
+.secrets-warn { margin-bottom: 12px; font-size: $font-size-xs; }
 
 .freeze-head { display: flex; justify-content: flex-end; margin-bottom: $spacing-sm; }
 .freeze-form { padding: $spacing-sm; background: rgba(22, 119, 255, 0.04); border: 1px solid $border-color-light; border-radius: $radius-md; margin-bottom: $spacing-sm; }

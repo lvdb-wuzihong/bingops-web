@@ -3,47 +3,75 @@ import type { IPaginatedData, IPageParams } from '../types/common'
 
 // ========== Runbook ==========
 
+// v29 扁平单步：一个 runbook = 一个步骤，steps 数组与 auto_rollback 已从契约删除，
+// 步骤属性直接以列形式出现在响应体（exec_type/entry/run_on/timeout_sec/…）
+export type ExecType = 'ansible' | 'shell' | 'python' | 'terraform'
+export type RunOn = 'target' | 'local'
+
 export interface IRunbook {
   id: number
   name: string
   category: string | null
   description: string | null
   params_schema: Record<string, unknown>
-  steps: Record<string, unknown>[]
+  // 需走 Vault 的入参声明 {变量名: {required, description, default_ref}}（v27 凭据三层分离）
+  secrets_schema: Record<string, unknown>
+  // ── 步骤列（v29，创建时缺省由后端按 exec_type 推断）──
+  exec_type: ExecType
+  // 语义随 exec_type 变：ansible=playbook 路径 / python=脚本 / terraform=目录；shell 恒为命令字符串
+  entry: string
+  run_on: RunOn
+  timeout_sec: number
+  // 默认 true，不可逆任务显式 false
+  rollbackable: boolean
+  // 仅 exec_type=shell 有效
+  undo_command: string | null
+  serial: string | null
+  batch_pause_sec: number
+  // 仅存钥匙名（ssh_user/ssh_key_ref/become*），真钥匙在 Vault
   connection: Record<string, unknown>
   // 目标模型 code 白名单，空/null 时后端默认 [aliyun_ecs, gcp_compute]
   target_models: string[] | null
+  // 执行未传时继承的默认目标与代码版本（v26）
+  default_target_resource_ids: number[]
+  default_code_ref: string | null
   version: number
   risk_level: string
-  auto_rollback: boolean
   is_active: boolean
   created_by: number | null
   created_at: string
   updated_at: string
 }
 
+// 创建/更新载荷：与响应同构但步骤属性可选（None → 后端推断）
 export interface IRunbookCreate {
   name: string
+  exec_type: ExecType
+  entry: string
   category?: string | null
   description?: string | null
   params_schema?: Record<string, unknown>
-  steps: Record<string, unknown>[]
+  secrets_schema?: Record<string, unknown>
+  run_on?: RunOn | null
+  timeout_sec?: number | null
+  rollbackable?: boolean
+  undo_command?: string | null
+  serial?: string | null
+  batch_pause_sec?: number | null
   connection?: Record<string, unknown>
+  // 平铺糖字段，与 connection 共存时覆盖同名键
+  ssh_user?: string | null
+  ssh_key_ref?: string | null
+  become?: boolean | null
+  become_method?: string | null
+  become_user?: string | null
   target_models?: string[] | null
   risk_level?: string
-  auto_rollback?: boolean
+  default_target_resource_ids?: number[] | null
+  default_code_ref?: string | null
 }
 
-export interface IRunbookUpdate {
-  name?: string
-  category?: string | null
-  description?: string | null
-  params_schema?: Record<string, unknown>
-  steps?: Record<string, unknown>[]
-  connection?: Record<string, unknown>
-  target_models?: string[] | null
-  risk_level?: string
-  auto_rollback?: boolean
+export interface IRunbookUpdate extends Partial<IRunbookCreate> {
   is_active?: boolean
 }
 
@@ -88,9 +116,13 @@ export interface IExecution {
   runbook_version: number
   code_ref: string
   params: Record<string, unknown>
+  // {变量名: Vault 钥匙名}，明文永不入库（v27）
+  secrets: Record<string, unknown>
+  // 无目标任务（run_on=local）时为空数组
   target_resources: IExecutionTarget[]
   connection: Record<string, unknown>
   status: string
+  // v28 起恒为 manual（自动回滚已从契约删除），P2 解冻时复用此列
   rollback_policy: string
   ticket_id: number | null
   triggered_by: number
@@ -132,8 +164,12 @@ export interface IStepLog {
 export interface IExecutionCreate {
   runbook_id: number
   params?: Record<string, unknown>
-  target_resource_ids: number[]
-  code_ref: string
+  // {变量名: Vault 钥匙名}；未传项由 secrets_schema 的 default_ref 回填
+  secrets?: Record<string, unknown>
+  // 未传→继承 runbook.default_target_resource_ids；显式传 [] 视为无目标（target 型 400）
+  target_resource_ids?: number[] | null
+  // 未传→runbook.default_code_ref→平台配置；全空后端 400
+  code_ref?: string | null
 }
 
 export interface IExecutionQuery extends IPageParams {
@@ -199,3 +235,18 @@ export function riskLevel(s: string) {
 export function isActiveStatus(s: string): boolean {
   return s === 'pending' || s === 'running' || s === 'rolling_back'
 }
+
+// exec_type 展示（terraform 门控未开，创建表单不可选但历史数据可能存在）
+export const EXEC_TYPE_MAP: Record<string, { text: string; color: string }> = {
+  ansible: { text: 'Ansible', color: 'purple' },
+  shell: { text: 'Shell', color: 'gray' },
+  python: { text: 'Python', color: 'green' },
+  terraform: { text: 'Terraform', color: 'orangered' },
+}
+
+export function execTypeMeta(s: string) {
+  return EXEC_TYPE_MAP[s] || { text: s, color: 'gray' }
+}
+
+// 当前开放的执行方式（terraform 仅注册类型占位，本轮拒绝创建）
+export const CREATABLE_EXEC_TYPES: ExecType[] = ['ansible', 'shell', 'python']

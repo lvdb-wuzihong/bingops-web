@@ -30,14 +30,22 @@
             <a-descriptions-item label="开始时间">{{ detail.started_at ? formatTime(detail.started_at) : '-' }}</a-descriptions-item>
             <a-descriptions-item label="结束时间">{{ detail.finished_at ? formatTime(detail.finished_at) : '-' }}</a-descriptions-item>
             <a-descriptions-item label="目标资源" :span="2">
-              <a-space wrap>
+              <a-space v-if="detail.target_resources.length" wrap>
                 <a-tag v-for="t in detail.target_resources" :key="t.resource_id" size="small" color="arcoblue">
                   {{ t.name }}<span v-if="t.ip" class="target-ip">（{{ t.ip }}）</span>
                 </a-tag>
               </a-space>
+              <!-- 无目标任务（run_on=local）：runner 本机执行，空目标是正常形态 -->
+              <span v-else class="no-target">无目标机（runner 本机执行）</span>
             </a-descriptions-item>
             <a-descriptions-item v-if="Object.keys(detail.params).length" label="执行参数" :span="2">
               <pre class="json-block">{{ JSON.stringify(detail.params, null, 2) }}</pre>
+            </a-descriptions-item>
+            <!-- v27 凭据三层：只展示 Vault 钥匙名/路径，明文从未入库 -->
+            <a-descriptions-item v-if="Object.keys(detail.secrets || {}).length" label="密钥入参（钥匙名）" :span="2">
+              <a-space wrap>
+                <a-tag v-for="(v, k) in detail.secrets" :key="k" size="small" color="gray">{{ k }} → {{ v }}</a-tag>
+              </a-space>
             </a-descriptions-item>
           </a-descriptions>
         </a-card>
@@ -47,7 +55,8 @@
           <a-table :data="detail.steps" :columns="stepColumns" :pagination="false" size="small" row-key="id">
             <template #step_name="{ record }">
               {{ record.step_name || record.step_key }}
-              <a-tag v-if="record.attempt_type === 'undo'" size="small" color="orange">回滚</a-tag>
+              <!-- 回滚行：同 step_key、attempt_type=rollback（v29 单步下最多 do + rollback 各一行） -->
+              <a-tag v-if="record.attempt_type === 'rollback'" size="small" color="orange">回滚</a-tag>
             </template>
             <template #type="{ record }"><a-tag size="small">{{ record.type }}</a-tag></template>
             <template #status="{ record }">
@@ -66,6 +75,8 @@
           </a-table>
           <a-empty v-if="detail.steps.length === 0" description="步骤尚未生成（执行 pending 中）" />
         </a-card>
+        <!-- v28：回滚一律手动，自动回滚已从契约删除 -->
+        <p class="rollback-tip">回滚策略固定为手动（manual）：失败后在上方手动触发回滚，重跑本步 undo（ansible/python 注入 BINGOPS_ACTION=undo，shell 优先用 undo_command）</p>
       </template>
     </a-spin>
 
@@ -205,6 +216,8 @@ onUnmounted(() => {
 .mono-text { font-family: $font-mono; color: $color-primary; }
 .target-ip { color: $text-secondary; }
 .error-text { color: $color-danger; }
+.no-target { color: $text-secondary; font-size: $font-size-sm; }
+.rollback-tip { margin: 0; font-size: $font-size-xs; color: $text-secondary; }
 
 .json-block {
   margin: 0;
