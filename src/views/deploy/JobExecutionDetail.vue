@@ -76,7 +76,7 @@
           <a-empty v-if="detail.steps.length === 0" description="步骤尚未生成（执行 pending 中）" />
         </a-card>
         <!-- v28：回滚一律手动，自动回滚已从契约删除 -->
-        <p class="rollback-tip">回滚策略固定为手动（manual）：失败后在上方手动触发回滚，重跑本步 undo（ansible/python 注入 BINGOPS_ACTION=undo，shell 优先用 undo_command）</p>
+        <p class="rollback-tip">回滚策略固定为手动（manual）：失败后在上方手动触发回滚，重跑本步入口并注入 BINGOPS_ACTION=undo（v30 已取消 undo_command／灰度字段，四种执行器统一走 undo 分支）</p>
       </template>
     </a-spin>
 

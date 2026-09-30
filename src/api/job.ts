@@ -22,12 +22,8 @@ export interface IRunbook {
   entry: string
   run_on: RunOn
   timeout_sec: number
-  // 默认 true，不可逆任务显式 false
+  // 默认 true，不可逆任务显式 false；回滚统一重跑同入口 + 注入 BINGOPS_ACTION=undo
   rollbackable: boolean
-  // 仅 exec_type=shell 有效
-  undo_command: string | null
-  serial: string | null
-  batch_pause_sec: number
   // 仅存钥匙名（ssh_user/ssh_key_ref/become*），真钥匙在 Vault
   connection: Record<string, unknown>
   // 目标模型 code 白名单，空/null 时后端默认 [aliyun_ecs, gcp_compute]
@@ -55,9 +51,6 @@ export interface IRunbookCreate {
   run_on?: RunOn | null
   timeout_sec?: number | null
   rollbackable?: boolean
-  undo_command?: string | null
-  serial?: string | null
-  batch_pause_sec?: number | null
   connection?: Record<string, unknown>
   // 平铺糖字段，与 connection 共存时覆盖同名键
   ssh_user?: string | null

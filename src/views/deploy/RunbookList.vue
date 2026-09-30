@@ -171,13 +171,6 @@
                 <span class="hint" style="margin-left: 6px">{{ formData.rollbackable ? '回滚重跑 undo' : '不可逆' }}</span>
               </a-form-item>
             </a-col>
-            <a-col v-if="formData.exec_type === 'shell'" :span="12">
-              <a-form-item label="回滚命令"><a-input v-model="formData.undo_command" placeholder="留空则注入 undo 分支" size="small" /></a-form-item>
-            </a-col>
-          </a-row>
-          <a-row :gutter="16">
-            <a-col :span="6"><a-form-item label="分批灰度"><a-input v-model="formData.serial" placeholder="1 / 30%，可空" size="small" /></a-form-item></a-col>
-            <a-col :span="6"><a-form-item label="批间暂停(秒)"><a-input-number v-model="formData.batch_pause_sec" :min="0" size="small" style="width: 100%" /></a-form-item></a-col>
             <a-col :span="12"><a-form-item label="提权（become）"><a-switch v-model="formData.become" size="small" /><span class="hint" style="margin-left: 6px">{{ formData.become ? `sudo → ${formData.become_user || 'root'}` : '不提权' }}</span></a-form-item></a-col>
           </a-row>
           <a-form-item label="描述"><a-textarea v-model="formData.description" placeholder="可选" :auto-size="{ minRows: 2, maxRows: 4 }" /></a-form-item>
@@ -323,9 +316,6 @@ const formData = reactive({
   target_models: [] as string[],
   timeout_sec: 600,
   rollbackable: true,
-  undo_command: '',
-  serial: '',
-  batch_pause_sec: 0,
 })
 
 const paramRows = ref<IParamRow[]>([])
@@ -399,7 +389,7 @@ function emptyForm() {
     name: '', category: '', description: '', exec_type: 'shell', entry: '', risk_level: 'low',
     ssh_user: 'root', ssh_key_ref: '', become: false, become_user: 'root',
     default_code_ref: '', default_target_resource_ids: [], target_models: [],
-    timeout_sec: 600, rollbackable: true, undo_command: '', serial: '', batch_pause_sec: 0,
+    timeout_sec: 600, rollbackable: true,
   })
   paramRows.value = []
   defaultTargetOptions.value = []
@@ -432,9 +422,6 @@ function handleEdit(record: IRunbook) {
     target_models: [...(record.target_models || [])],
     timeout_sec: record.timeout_sec,
     rollbackable: record.rollbackable,
-    undo_command: record.undo_command || '',
-    serial: record.serial || '',
-    batch_pause_sec: record.batch_pause_sec,
   })
   // params_schema + secrets_schema 合成一张表（密钥条目类型置为 secret）
   const rows: IParamRow[] = []
@@ -524,9 +511,6 @@ function buildPayload(): IRunbookCreate | null {
     run_on: runOn,
     timeout_sec: formData.timeout_sec,
     rollbackable: formData.rollbackable,
-    undo_command: formData.exec_type === 'shell' && formData.undo_command.trim() ? formData.undo_command.trim() : null,
-    serial: formData.serial.trim() || null,
-    batch_pause_sec: formData.batch_pause_sec,
     target_models: formData.target_models.length ? [...formData.target_models] : null,
     default_target_resource_ids: isTargetRun.value ? [...formData.default_target_resource_ids] : [],
     default_code_ref: formData.default_code_ref.trim() || null,
