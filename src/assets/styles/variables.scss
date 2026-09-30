@@ -27,6 +27,9 @@ $text-secondary: #597ef7;
 $text-disabled: #bfbfbf;
 $text-accent: $color-primary;
 $text-body: #334155;
+// 提示/辅助文字专用中性灰：$text-secondary 在本主题里是饱和蓝，只适合强调性次要文字；
+// 表单 extra 说明、空态描述等需要「弱化」的场景必须用它，否则提示会像一堆链接抢视觉焦点
+$text-hint: #86909c;
 
 // 边框
 $border-color: #d6e4ff;

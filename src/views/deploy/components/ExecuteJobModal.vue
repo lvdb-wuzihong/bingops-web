@@ -265,7 +265,7 @@ async function handleSubmit() {
 @use '../../../assets/styles/variables' as *;
 
 .rb-meta { display: flex; align-items: center; gap: 6px; margin: -8px 0 $spacing-sm; }
-.rb-entry { font-size: $font-size-xs; color: $text-secondary; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.rb-entry { font-size: $font-size-xs; color: $text-hint; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .mono { font-family: $font-mono; }
-.no-params { font-size: $font-size-xs; color: $text-secondary; margin: 0 0 $spacing-sm; }
+.no-params { font-size: $font-size-xs; color: $text-hint; margin: 0 0 $spacing-sm; }
 </style>
