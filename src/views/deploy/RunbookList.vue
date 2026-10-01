@@ -144,12 +144,6 @@
           </a-form-item>
           <a-row :gutter="16">
             <a-col :span="6"><a-form-item label="超时(秒)"><a-input-number v-model="formData.timeout_sec" :min="10" size="small" style="width: 100%" /></a-form-item></a-col>
-            <a-col :span="6">
-              <a-form-item label="可回滚">
-                <a-switch v-model="formData.rollbackable" size="small" />
-                <span class="hint" style="margin-left: 6px">{{ formData.rollbackable ? '回滚重跑 undo' : '不可逆' }}</span>
-              </a-form-item>
-            </a-col>
           </a-row>
           <a-form-item label="描述"><a-textarea v-model="formData.description" placeholder="可选" :auto-size="{ minRows: 2, maxRows: 4 }" /></a-form-item>
         </div>
@@ -287,7 +281,6 @@ const formData = reactive({
   risk_level: 'low',
   target_models: [] as string[],
   timeout_sec: 600,
-  rollbackable: true,
 })
 
 const paramRows = ref<IParamRow[]>([])
@@ -331,7 +324,7 @@ function emptyForm() {
   Object.assign(formData, {
     name: '', category: '', description: '', exec_type: 'shell', entry: '', risk_level: 'low',
     target_models: [],
-    timeout_sec: 600, rollbackable: true,
+    timeout_sec: 600,
   })
   paramRows.value = []
   current.value = 0
@@ -355,7 +348,6 @@ function handleEdit(record: IRunbook) {
     risk_level: record.risk_level,
     target_models: [...(record.target_models || [])],
     timeout_sec: record.timeout_sec,
-    rollbackable: record.rollbackable,
   })
   // params_schema + secrets_schema 合成一张表（密钥条目类型置为 secret）
   const rows: IParamRow[] = []
@@ -423,7 +415,6 @@ function buildPayload(): IRunbookCreate | null {
     // 显式落推断后的 run_on（与后端一致；编辑改类型时同步刷新）
     run_on: runOn,
     timeout_sec: formData.timeout_sec,
-    rollbackable: formData.rollbackable,
     target_models: formData.target_models.length ? [...formData.target_models] : null,
   }
   return payload

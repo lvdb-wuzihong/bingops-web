@@ -7,9 +7,6 @@
       <a-space v-if="detail">
         <a-tag size="small" :color="executionStatus(detail.status).color">{{ executionStatus(detail.status).text }}</a-tag>
         <a-button v-if="detail.status === 'pending' || detail.status === 'running'" status="warning" @click="handleCancel">取消执行</a-button>
-        <a-popconfirm v-if="detail.status === 'failed'" content="对失败执行触发手动回滚？" @ok="handleRollback">
-          <a-button status="danger">手动回滚</a-button>
-        </a-popconfirm>
         <a-button @click="fetchDetail">
           <template #icon><icon-refresh /></template>
         </a-button>
@@ -26,7 +23,6 @@
               {{ runbookName }}（v{{ detail.runbook_version }}）
             </a-descriptions-item>
             <a-descriptions-item label="代码版本"><span class="mono-text">{{ detail.code_ref }}</span></a-descriptions-item>
-            <a-descriptions-item label="回滚策略">{{ detail.rollback_policy }}</a-descriptions-item>
             <a-descriptions-item label="开始时间">{{ detail.started_at ? formatTime(detail.started_at) : '-' }}</a-descriptions-item>
             <a-descriptions-item label="结束时间">{{ detail.finished_at ? formatTime(detail.finished_at) : '-' }}</a-descriptions-item>
             <a-descriptions-item label="目标资源" :span="2">
@@ -59,8 +55,6 @@
           <a-table :data="detail.steps" :columns="stepColumns" :pagination="false" size="small" row-key="id">
             <template #step_name="{ record }">
               {{ record.step_name || record.step_key }}
-              <!-- 回滚行：同 step_key、attempt_type=rollback（v29 单步下最多 do + rollback 各一行） -->
-              <a-tag v-if="record.attempt_type === 'rollback'" size="small" color="orange">回滚</a-tag>
             </template>
             <template #type="{ record }"><a-tag size="small">{{ record.type }}</a-tag></template>
             <template #status="{ record }">
@@ -79,8 +73,6 @@
           </a-table>
           <a-empty v-if="detail.steps.length === 0" description="步骤尚未生成（执行 pending 中）" />
         </a-card>
-        <!-- v28：回滚一律手动，自动回滚已从契约删除 -->
-        <p class="rollback-tip">回滚策略固定为手动（manual）：失败后在上方手动触发回滚，重跑本步入口并注入 BINGOPS_ACTION=undo（v30 已取消 undo_command／灰度字段，四种执行器统一走 undo 分支）</p>
       </template>
     </a-spin>
 
@@ -153,10 +145,6 @@ async function handleCancel() {
   try { await jobApi.cancelExecution(executionId); Message.success('已取消'); fetchDetail() } catch { /* 拦截器已提示 */ }
 }
 
-async function handleRollback() {
-  try { await jobApi.rollbackExecution(executionId); Message.success('回滚已下发'); fetchDetail() } catch { /* 拦截器已提示 */ }
-}
-
 // ========== 步骤日志 live tail ==========
 const logVisible = ref(false)
 const logStepName = ref('')
@@ -225,7 +213,6 @@ onUnmounted(() => {
 .target-cred { font-size: $font-size-xs; color: $text-hint; }
 .error-text { color: $color-danger; }
 .no-target { color: $text-secondary; font-size: $font-size-sm; }
-.rollback-tip { margin: 0; font-size: $font-size-xs; color: $text-secondary; }
 
 .json-block {
   margin: 0;

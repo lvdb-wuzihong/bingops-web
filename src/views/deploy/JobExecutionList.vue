@@ -51,9 +51,6 @@
         <template #actions="{ record }">
           <a-space>
             <a-button v-if="record.status === 'pending' || record.status === 'running'" type="text" size="small" status="warning" @click="handleCancel(record.id)">取消</a-button>
-            <a-popconfirm v-if="record.status === 'failed'" content="对失败执行触发手动回滚？" @ok="handleRollback(record.id)">
-              <a-button type="text" size="small" status="danger">回滚</a-button>
-            </a-popconfirm>
             <a-button type="text" size="small" @click="goDetail(record.id)"><template #icon><icon-eye /></template></a-button>
           </a-space>
         </template>
@@ -139,10 +136,6 @@ function formatTime(t: string) { return new Date(t).toLocaleString('zh-CN', { ye
 
 async function handleCancel(id: number) {
   try { await jobApi.cancelExecution(id); Message.success('已取消'); fetchData() } catch { /* 拦截器已提示 */ }
-}
-
-async function handleRollback(id: number) {
-  try { await jobApi.rollbackExecution(id); Message.success('回滚已下发'); fetchData() } catch { /* 拦截器已提示 */ }
 }
 
 const executeVisible = ref(false)

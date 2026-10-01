@@ -22,8 +22,6 @@ export interface IRunbook {
   entry: string
   run_on: RunOn
   timeout_sec: number
-  // 默认 true，不可逆任务显式 false；回滚统一重跑同入口 + 注入 BINGOPS_ACTION=undo
-  rollbackable: boolean
   // 仅存钥匙名（ssh_user/ssh_key_ref/become*），真钥匙在 Vault
   connection: Record<string, unknown>
   // 目标模型 code 白名单，空/null 时后端默认 [aliyun_ecs, gcp_compute]
@@ -47,7 +45,6 @@ export interface IRunbookCreate {
   secrets_schema?: Record<string, unknown>
   run_on?: RunOn | null
   timeout_sec?: number | null
-  rollbackable?: boolean
   // v34：连接三件套（登录用户/密钥/提权）已撤到执行面，runbook 不再接收（多传被静默忽略）
   target_models?: string[] | null
   risk_level?: string
@@ -117,8 +114,7 @@ export interface IExecution {
   target_resources: IExecutionTarget[]
   connection: Record<string, unknown>
   status: string
-  // v28 起恒为 manual（自动回滚已从契约删除），P2 解冻时复用此列
-  rollback_policy: string
+  // v37：平台不提供回滚——rollback_policy 已从契约删除，失败由人依日志修复
   ticket_id: number | null
   triggered_by: number
   started_at: string | null
@@ -133,7 +129,7 @@ export interface IJobStep {
   step_key: string
   step_name: string | null
   type: string
-  attempt_type: string
+  // v37：一步一行，attempt_type（do|rollback）已删除
   status: string
   serial: string | null
   exit_code: number | null
@@ -197,10 +193,6 @@ export function cancelExecution(id: number) {
   return request.post<IExecution>(`/api/v1/jobs/executions/${id}/cancel`)
 }
 
-export function rollbackExecution(id: number) {
-  return request.post<IExecution>(`/api/v1/jobs/executions/${id}/rollback`)
-}
-
 // after_seq 增量拉取，前端轮询 live tail
 export function getStepLogs(stepId: number, afterSeq = 0) {
   return request.get<IStepLog[]>(`/api/v1/jobs/steps/${stepId}/logs`, { params: { after_seq: afterSeq } })
@@ -214,10 +206,6 @@ export const EXECUTION_STATUS_MAP: Record<string, { text: string; color: string 
   success: { text: '成功', color: 'green' },
   failed: { text: '失败', color: 'red' },
   cancelled: { text: '已取消', color: 'gray' },
-  rolling_back: { text: '回滚中', color: 'orange' },
-  rolled_back: { text: '已回滚', color: 'purple' },
-  partial_rollback: { text: '部分回滚', color: 'magenta' },
-  rollback_failed: { text: '回滚失败', color: 'red' },
 }
 
 export function executionStatus(s: string) {
@@ -237,7 +225,7 @@ export function riskLevel(s: string) {
 
 // 执行/步骤的活跃态（需要轮询刷新）
 export function isActiveStatus(s: string): boolean {
-  return s === 'pending' || s === 'running' || s === 'rolling_back'
+  return s === 'pending' || s === 'running'
 }
 
 // exec_type 展示（terraform 门控未开，创建表单不可选但历史数据可能存在）
