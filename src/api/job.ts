@@ -95,12 +95,25 @@ export function deleteRunbook(id: number) {
 
 // ========== 执行实例 ==========
 
+// 选路结果（v32）：非空表示经该中转网关，null = 直连
+export interface ITargetGateway {
+  name?: string
+  host?: string
+  port?: number
+  ssh_user?: string
+  ssh_key_ref?: string | null
+}
+
 export interface IExecutionTarget {
   resource_id: number
   name: string
   ip?: string | null
   region?: string | null
   model_code?: string | null
+  // v31 逐台解析的访问凭据（只读展示用）：将以 ssh_user@ip 访问、密钥 ssh_key_ref
+  ssh_user?: string | null
+  ssh_key_ref?: string | null
+  gateway?: ITargetGateway | null
 }
 
 export interface IExecution {

@@ -30,11 +30,15 @@
             <a-descriptions-item label="开始时间">{{ detail.started_at ? formatTime(detail.started_at) : '-' }}</a-descriptions-item>
             <a-descriptions-item label="结束时间">{{ detail.finished_at ? formatTime(detail.finished_at) : '-' }}</a-descriptions-item>
             <a-descriptions-item label="目标资源" :span="2">
-              <a-space v-if="detail.target_resources.length" wrap>
-                <a-tag v-for="t in detail.target_resources" :key="t.resource_id" size="small" color="arcoblue">
-                  {{ t.name }}<span v-if="t.ip" class="target-ip">（{{ t.ip }}）</span>
-                </a-tag>
-              </a-space>
+              <!-- v31/v32：逐台只读展示解析出的访问身份与路由，不做下拉选择（多命中已在后端 400） -->
+              <div v-if="detail.target_resources.length" class="target-list">
+                <div v-for="t in detail.target_resources" :key="t.resource_id" class="target-item">
+                  <span class="target-name">{{ t.name }}</span>
+                  <span v-if="t.ssh_user || t.ssh_key_ref" class="target-cred mono">将以 {{ t.ssh_user || '?' }}@{{ t.ip || '-' }} 访问<span v-if="t.ssh_key_ref">，密钥 {{ t.ssh_key_ref }}</span></span>
+                  <a-tag v-if="t.gateway" size="small" color="orange">经 {{ t.gateway.name }}</a-tag>
+                  <a-tag v-else size="small" color="gray">直连</a-tag>
+                </div>
+              </div>
               <!-- 无目标任务（run_on=local）：runner 本机执行，空目标是正常形态 -->
               <span v-else class="no-target">无目标机（runner 本机执行）</span>
             </a-descriptions-item>
@@ -215,6 +219,10 @@ onUnmounted(() => {
 
 .mono-text { font-family: $font-mono; color: $color-primary; }
 .target-ip { color: $text-secondary; }
+.target-list { display: flex; flex-direction: column; gap: 6px; }
+.target-item { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.target-name { font-weight: 500; color: $text-primary; }
+.target-cred { font-size: $font-size-xs; color: $text-hint; }
 .error-text { color: $color-danger; }
 .no-target { color: $text-secondary; font-size: $font-size-sm; }
 .rollback-tip { margin: 0; font-size: $font-size-xs; color: $text-secondary; }

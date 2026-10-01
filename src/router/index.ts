@@ -125,6 +125,18 @@ const routes: RouteRecordRaw[] = [
             component: () => import('../views/deploy/JobExecutionDetail.vue'),
             meta: { title: '执行详情', hidden: true },
           },
+          {
+            path: 'credentials',
+            name: 'CredentialList',
+            component: () => import('../views/jobs/CredentialList.vue'),
+            meta: { title: '凭据目录' },
+          },
+          {
+            path: 'gateways',
+            name: 'GatewayList',
+            component: () => import('../views/jobs/GatewayList.vue'),
+            meta: { title: '中转网关' },
+          },
         ],
       },
       {

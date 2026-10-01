@@ -92,18 +92,8 @@
           <a-input v-model="formData.entry" :placeholder="entryMeta.placeholder" />
           <template #extra><span class="hint">{{ entryMeta.hint }}</span></template>
         </a-form-item>
-        <!-- 连接：runbook 级「怎么连」（仅目标机型）；具体哪台机器在执行时圈选 -->
-        <template v-if="isTargetRun">
-          <a-row :gutter="16">
-            <a-col :span="12"><a-form-item label="登录用户"><a-input v-model="formData.ssh_user" placeholder="如 root / ops" /></a-form-item></a-col>
-            <a-col :span="12">
-              <a-form-item label="登录密钥">
-                <a-input v-model="formData.ssh_key_ref" placeholder="如 povison_key_pair" />
-                <template #extra><span class="hint">只填名字，私钥由执行机现场取用</span></template>
-              </a-form-item>
-            </a-col>
-          </a-row>
-        </template>
+        <!-- v31：凭据属于机器不属于任务——目标机与登录凭据执行期逐台解析，runbook 不指定 -->
+        <p v-if="isTargetRun" class="local-note"><icon-check-circle-fill class="ok-ic" /> 目标机与登录凭据在执行时按主机标签 / 凭据目录逐台解析，runbook 无需指定；如需任务级兜底钥匙见「高级设置」</p>
         <p v-else class="local-note"><icon-check-circle-fill class="ok-ic" /> 该类型由平台执行机本机运行，无需登录凭据；执行目标在「执行」时圈选</p>
         </template>
 
@@ -163,6 +153,11 @@
               <a-option v-for="r in defaultTargetOptions" :key="r.id" :value="r.id">{{ r.name }}（{{ r.provider_id || '#' + r.id }}）</a-option>
             </a-select>
           </a-form-item>
+          <!-- v31：任务级兜底（可选）——仅当目标机无 ssh_credential 标签且凭据目录无默认时才需要 -->
+          <a-row v-if="isTargetRun" :gutter="16">
+            <a-col :span="12"><a-form-item label="兜底登录用户"><a-input v-model="formData.ssh_user" placeholder="可空，如 ops" size="small" /></a-form-item></a-col>
+            <a-col :span="12"><a-form-item label="兜底登录密钥"><a-input v-model="formData.ssh_key_ref" placeholder="可空；主机无标签且目录无默认时才填" size="small" /></a-form-item></a-col>
+          </a-row>
           <a-row :gutter="16">
             <a-col :span="6"><a-form-item label="超时(秒)"><a-input-number v-model="formData.timeout_sec" :min="10" size="small" style="width: 100%" /></a-form-item></a-col>
             <a-col :span="6">
@@ -338,8 +333,7 @@ function validateStep(key: string): boolean {
   if (key === 'basic') {
     if (!formData.name.trim()) { Message.warning('请填写名称'); return false }
     if (!formData.entry.trim()) { Message.warning(`请填写${entryMeta.value.label}`); return false }
-    // target 型登录密钥必填；编辑态允许沿用原 connection
-    if (isTargetRun.value && !editingId.value && !formData.ssh_key_ref.trim()) { Message.warning('目标机任务必须填写登录密钥'); return false }
+    // v31：登录凭据属于机器（执行期逐台解析），runbook 不再要求 ssh_key_ref
   }
   return true
 }

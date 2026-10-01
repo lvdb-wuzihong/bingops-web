@@ -55,6 +55,8 @@
           <template #title>作业管理</template>
           <a-menu-item key="RunbookList">Runbook 管理</a-menu-item>
           <a-menu-item key="JobExecutionList">执行记录</a-menu-item>
+          <a-menu-item key="CredentialList">凭据目录</a-menu-item>
+          <a-menu-item key="GatewayList">中转网关</a-menu-item>
         </a-sub-menu>
         <a-menu-item key="Deploy">
           <template #icon><icon-cloud-download /></template>

@@ -69,10 +69,11 @@
           <a-form-item :label="`密钥 ${String(key)}${spec.description ? ' · ' + spec.description : ''}`" :required="!!spec.required && !spec.default_ref">
             <a-input
               v-model="secretValues[String(key)]"
-              :placeholder="spec.default_ref ? `留空 = 用默认 ${spec.default_ref}` : (spec.required ? 'Vault 路径，必填' : 'Vault 路径，可选')"
+              :placeholder="spec.default_ref ? `留空 = 用默认 ${spec.default_ref}` : (spec.required ? '凭据名称或 Vault 路径，必填' : '凭据名称或 Vault 路径，可选')"
             />
           </a-form-item>
         </template>
+        <p v-if="Object.keys(secretsSchema).length" class="secrets-hint">值可填凭据目录中的名称（平台展开为 Vault 路径）或裸 Vault 路径；条目声明了类型时强制走目录并校验，拼错/拿错类型创建执行即 400</p>
         <p v-if="!Object.keys(paramsSchema).length && !Object.keys(secretsSchema).length" class="no-params">该 Runbook 无需填参，直接执行</p>
       </template>
     </a-form>
@@ -268,4 +269,5 @@ async function handleSubmit() {
 .rb-entry { font-size: $font-size-xs; color: $text-hint; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .mono { font-family: $font-mono; }
 .no-params { font-size: $font-size-xs; color: $text-hint; margin: 0 0 $spacing-sm; }
+.secrets-hint { font-size: $font-size-xs; color: $text-hint; margin: -4px 0 $spacing-sm; }
 </style>
