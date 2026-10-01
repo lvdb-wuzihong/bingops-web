@@ -5,7 +5,7 @@ import type { IPaginatedData, IPageParams } from '../types/common'
 
 // v29 扁平单步：一个 runbook = 一个步骤，steps 数组与 auto_rollback 已从契约删除，
 // 步骤属性直接以列形式出现在响应体（exec_type/entry/run_on/timeout_sec/…）
-export type ExecType = 'ansible' | 'shell' | 'python' | 'terraform'
+export type ExecType = 'ansible' | 'shell' | 'script' | 'python' | 'terraform'
 export type RunOn = 'target' | 'local'
 
 export interface IRunbook {
@@ -18,7 +18,7 @@ export interface IRunbook {
   secrets_schema: Record<string, unknown>
   // ── 步骤列（v29，创建时缺省由后端按 exec_type 推断）──
   exec_type: ExecType
-  // 语义随 exec_type 变：ansible=playbook 路径 / python=脚本 / terraform=目录；shell 恒为命令字符串
+  // 语义随 exec_type 变：ansible=playbook 路径 / shell=内联命令 / script=仓库脚本路径 / python=脚本 / terraform=目录
   entry: string
   run_on: RunOn
   timeout_sec: number
@@ -28,9 +28,6 @@ export interface IRunbook {
   connection: Record<string, unknown>
   // 目标模型 code 白名单，空/null 时后端默认 [aliyun_ecs, gcp_compute]
   target_models: string[] | null
-  // 执行未传时继承的默认目标与代码版本（v26）
-  default_target_resource_ids: number[]
-  default_code_ref: string | null
   version: number
   risk_level: string
   is_active: boolean
@@ -54,8 +51,6 @@ export interface IRunbookCreate {
   // v34：连接三件套（登录用户/密钥/提权）已撤到执行面，runbook 不再接收（多传被静默忽略）
   target_models?: string[] | null
   risk_level?: string
-  default_target_resource_ids?: number[] | null
-  default_code_ref?: string | null
 }
 
 export interface IRunbookUpdate extends Partial<IRunbookCreate> {
@@ -249,6 +244,7 @@ export function isActiveStatus(s: string): boolean {
 export const EXEC_TYPE_MAP: Record<string, { text: string; color: string }> = {
   ansible: { text: 'Ansible', color: 'purple' },
   shell: { text: 'Shell', color: 'gray' },
+  script: { text: '仓库脚本', color: 'cyan' },
   python: { text: 'Python', color: 'green' },
   terraform: { text: 'Terraform', color: 'orangered' },
 }
@@ -257,5 +253,5 @@ export function execTypeMeta(s: string) {
   return EXEC_TYPE_MAP[s] || { text: s, color: 'gray' }
 }
 
-// 当前开放的执行方式（terraform 仅注册类型占位，本轮拒绝创建）
-export const CREATABLE_EXEC_TYPES: ExecType[] = ['ansible', 'shell', 'python']
+// 当前开放的执行方式（与后端 job_step_types 默认一致：ansible,shell,script,python；terraform 门控未开）
+export const CREATABLE_EXEC_TYPES: ExecType[] = ['ansible', 'shell', 'script', 'python']

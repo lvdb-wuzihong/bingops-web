@@ -17,15 +17,21 @@
           <span class="rb-entry mono">{{ selectedRunbook.entry }}</span>
         </p>
 
-        <a-form-item v-if="!isLocal" field="code_ref" label="代码版本（git tag）" :extra="codeRefHint">
-          <a-input v-model="formData.code_ref" :placeholder="selectedRunbook.default_code_ref || '如：v1.0.0'" />
+        <!-- v36：目标机与版本已从 runbook 幕落，每次执行都要选；可从本 Runbook 上次执行带入 -->
+        <div class="reuse-bar">
+          <a-button size="mini" :loading="reuseLoading" @click="reuseLast">复用上次的目标与版本</a-button>
+          <span class="rb-entry">目标机/代码版本每次执行都要选，v36 起不再缓存在模板上</span>
+        </div>
+
+        <a-form-item v-if="needsCodeRef" field="code_ref" label="代码版本（git tag）" :extra="codeRefHint">
+          <a-input v-model="formData.code_ref" placeholder="如：v1.0.0" />
         </a-form-item>
 
-        <a-form-item v-if="!isLocal" field="target_ids" label="目标资源" :extra="targetHint">
+        <a-form-item v-if="!isLocal" field="target_ids" label="目标资源" required :extra="targetHint">
           <a-select
             v-model="formData.target_ids"
             multiple allow-search :filter-option="false" :loading="resSearching"
-            placeholder="留空 = 使用 Runbook 默认目标；输入名称/实例 ID 搜索"
+            placeholder="输入名称/实例 ID 搜索，可多选（每次执行都要选）"
             @search="searchResources"
           >
             <a-option v-for="r in resourceOptions" :key="r.id" :value="r.id">{{ r.name }}（{{ r.model_code || '-' }} · #{{ r.id }}）</a-option>
@@ -44,7 +50,7 @@
             <a-col :span="12">
               <a-form-item label="SSH 钥匙">
                 <a-select v-model="formData.ssh_credential" placeholder="从凭据目录选（kind=ssh_key）" allow-clear allow-search>
-                  <a-option v-for="c in sshCredentials" :key="c.id" :value="c.name">{{ c.name }}{{ c.cloud_account ? `（${c.cloud_account}）` : '' }}</a-option>
+                  <a-option v-for="c in sshCredentials" :key="c.id" :value="c.name">{{ c.name }}</a-option>
                 </a-select>
               </a-form-item>
             </a-col>
@@ -139,8 +145,11 @@ const visibleProxy = computed({
 const formRef = ref()
 const loading = ref(false)
 const runbookOptions = ref<IRunbook[]>([])
-const resourceOptions = ref<ICmdbResource[]>([])
+// 目标机下拉选项轻量结构（只需 id/name/model_code），便于「复用上次的」直接注入上次目标
+interface ITargetOption { id: number; name: string; model_code?: string | null }
+const resourceOptions = ref<ITargetOption[]>([])
 const resSearching = ref(false)
+const reuseLoading = ref(false)
 
 const formData = reactive({
   runbook_id: undefined as number | undefined,
@@ -181,6 +190,8 @@ const secretValues = reactive<Record<string, string>>({})
 
 const selectedRunbook = computed(() => runbookOptions.value.find(r => r.id === formData.runbook_id))
 const isLocal = computed(() => selectedRunbook.value?.run_on === 'local')
+// v36：shell 是 ad-hoc 内联命令不落仓库，其余类型（ansible/script/python）runner 需 clone 仓库→要 code_ref
+const needsCodeRef = computed(() => !!selectedRunbook.value && selectedRunbook.value.exec_type !== 'shell')
 
 const paramsSchema = computed<Record<string, IParamSpec>>(() => {
   const out: Record<string, IParamSpec> = {}
@@ -198,21 +209,16 @@ const secretsSchema = computed<Record<string, IParamSpec>>(() => {
   return out
 })
 
-// v26 继承：默认值存在时可留空（未传 → 后端走继承链；全空才 400）
-const codeRefHint = computed(() => {
-  const rb = selectedRunbook.value
-  if (!rb) return ''
-  return rb.default_code_ref
-    ? `留空 = 继承 Runbook 默认版本「${rb.default_code_ref}」；runner 按 tag 克隆仓库，后端不校验 tag 存在性`
-    : 'runner 将按此 tag 克隆约定 GitLab 仓库；平台未配默认版本时必填'
-})
+// v36：目标/版本不再从 runbook 继承（已删 default_*）；code_ref 显式传 > 平台配置 > 400
+const codeRefHint = computed(() =>
+  'runner 按此 tag 克隆约定 GitLab 仓库执行；平台未配默认版本时必填，留空会报 400',
+)
 
 const targetHint = computed(() => {
   const rb = selectedRunbook.value
   if (!rb) return ''
   const models = rb.target_models?.length ? rb.target_models : ['aliyun_ecs', 'gcp_compute']
-  const defaults = (rb.default_target_resource_ids || []).length ? `留空 = 继承默认目标（${rb.default_target_resource_ids.length} 台）` : '未配置默认目标，必须选择'
-  return `受目标模型约束：${models.join(' / ')}；仅运行中（running）资源可选；${defaults}`
+  return `受目标模型约束：${models.join(' / ')}；仅运行中（running）资源可选；每次执行必须选择目标机`
 })
 
 function resetDynamicValues() {
@@ -249,12 +255,34 @@ async function searchResources(keyword: string) {
       items = (await getResourceList({ keyword: keyword || undefined, status: 'running', page: 1, page_size: 20 })).data.items
     }
     // 合并已选项，避免回显丢失
-    const merged = [...items]
+    const merged: ITargetOption[] = [...items]
     for (const r of resourceOptions.value) {
       if (formData.target_ids.includes(r.id) && !merged.some(m => m.id === r.id)) merged.push(r)
     }
     resourceOptions.value = merged
   } catch { /* ignore */ } finally { resSearching.value = false }
+}
+
+// 「复用上次的」：读本 Runbook 最近一次执行，带入目标机与版本（v36 取代已删的 runbook 默认值）
+async function reuseLast() {
+  const rb = selectedRunbook.value
+  if (!rb) { Message.warning('请先选择 Runbook'); return }
+  reuseLoading.value = true
+  try {
+    const res = await jobApi.getExecutions({ runbook_id: rb.id, page: 1, page_size: 1 })
+    const last = res.data.items[0]
+    if (!last) { Message.info('该 Runbook 暂无历史执行'); return }
+    if (last.code_ref) formData.code_ref = last.code_ref
+    if (!isLocal.value) {
+      formData.target_ids = (last.target_resources || []).map(t => t.resource_id)
+      const merged = [...resourceOptions.value]
+      for (const t of last.target_resources || []) {
+        if (!merged.some(m => m.id === t.resource_id)) merged.push({ id: t.resource_id, name: t.name, model_code: t.model_code })
+      }
+      resourceOptions.value = merged
+    }
+    Message.success('已带入上次执行的目标与版本')
+  } catch { /* 拦截器已提示 */ } finally { reuseLoading.value = false }
 }
 
 watch(() => props.visible, async (v) => {
@@ -298,7 +326,11 @@ async function handleSubmit() {
       return
     }
   }
-  // 目标/版本留空不发送 → 后端走继承链（默认目标/默认 tag/平台配置），全空时 400 由拦截器透传
+  // v36：目标机每次执行都要显式选（runbook 已无默认目标）；无 target 型任务不受影响
+  if (!isLocal.value && formData.target_ids.length === 0) {
+    Message.warning('请至少选择一台目标机')
+    return
+  }
   const errors = await formRef.value?.validate()
   if (errors) return
 
@@ -313,7 +345,7 @@ async function handleSubmit() {
       runbook_id: rb.id,
       params,
       secrets,
-      // 留空不发送 → 后端继承 runbook 默认（显式传 [] 会被视为「无目标」）
+      // 目标机必填（上方已拦）；local 型无目标不发送
       target_resource_ids: !isLocal.value && formData.target_ids.length ? [...formData.target_ids] : undefined,
       code_ref: formData.code_ref.trim() || undefined,
       // v34：target 型才发连接三件套；留空项不发送→后端走兜底链（主机标签/runbook 存量）
@@ -338,5 +370,7 @@ async function handleSubmit() {
 .rb-entry { font-size: $font-size-xs; color: $text-hint; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .mono { font-family: $font-mono; }
 .no-params { font-size: $font-size-xs; color: $text-hint; margin: 0 0 $spacing-sm; }
+.reuse-bar { display: flex; align-items: center; gap: 8px; margin: -4px 0 $spacing-md; }
+.reuse-bar .rb-entry { flex: none; }
 .secrets-hint { font-size: $font-size-xs; color: $text-hint; margin: -4px 0 $spacing-sm; }
 </style>

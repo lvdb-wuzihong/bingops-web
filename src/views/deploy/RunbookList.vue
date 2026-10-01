@@ -134,23 +134,12 @@
         </div>
         <div v-show="advOpen" class="adv-body">
           <a-row :gutter="16">
-            <a-col :span="8"><a-form-item label="风险等级"><a-select v-model="formData.risk_level"><a-option v-for="(m, k) in RISK_LEVEL_MAP" :key="k" :value="k">{{ m.text }}</a-option></a-select></a-form-item></a-col>
-            <a-col :span="8"><a-form-item label="分类"><a-input v-model="formData.category" placeholder="如 restart" /></a-form-item></a-col>
-            <a-col :span="8"><a-form-item label="默认代码版本"><a-input v-model="formData.default_code_ref" placeholder="git tag，如 v1.0.0" /></a-form-item></a-col>
+            <a-col :span="12"><a-form-item label="风险等级"><a-select v-model="formData.risk_level"><a-option v-for="(m, k) in RISK_LEVEL_MAP" :key="k" :value="k">{{ m.text }}</a-option></a-select></a-form-item></a-col>
+            <a-col :span="12"><a-form-item label="分类"><a-input v-model="formData.category" placeholder="如 restart" /></a-form-item></a-col>
           </a-row>
           <a-form-item v-if="isTargetRun" label="允许的目标模型">
             <a-select v-model="formData.target_models" multiple allow-clear placeholder="留空 = 默认 aliyun_ecs / gcp_compute">
               <a-option v-for="m in modelOptions" :key="m.code" :value="m.code">{{ m.name }}（{{ m.code }}）</a-option>
-            </a-select>
-          </a-form-item>
-          <a-form-item v-if="isTargetRun" label="默认目标机（可选，执行时可覆盖）">
-            <a-select
-              v-model="formData.default_target_resource_ids"
-              placeholder="留空即可；设定后执行弹窗会预选这几台"
-              multiple allow-clear allow-search :filter-option="false" :loading="resSearching"
-              @search="searchDefaultTargets" @visible-change="onDefaultTargetOpen"
-            >
-              <a-option v-for="r in defaultTargetOptions" :key="r.id" :value="r.id">{{ r.name }}（{{ r.provider_id || '#' + r.id }}）</a-option>
             </a-select>
           </a-form-item>
           <a-row :gutter="16">
@@ -194,8 +183,6 @@ import * as jobApi from '../../api/job'
 import { riskLevel, execTypeMeta, RISK_LEVEL_MAP } from '../../api/job'
 import type { ExecType, IRunbook, IRunbookCreate, RunOn } from '../../api/job'
 import ExecuteJobModal from './components/ExecuteJobModal.vue'
-import { getResourceList, getResourceOptions } from '../../api/cmdb'
-import type { IResourceOption } from '../../api/cmdb'
 import { getModels } from '../../api/model'
 import type { IModel } from '../../types/model'
 
@@ -255,15 +242,17 @@ const editingId = ref<number | null>(null)
 
 // 执行方式卡片：中文语义优先，terraform 门控未开置灰不可选
 const EXEC_CARDS: { value: ExecType; title: string; desc: string; disabled?: boolean }[] = [
-  { value: 'shell', title: '跑一条命令', desc: 'SSH 到目标机执行' },
-  { value: 'ansible', title: '跑 Playbook', desc: 'SSH 到目标机执行' },
+  { value: 'shell', title: '跑一条命令', desc: '目标机即时执行·不落仓库' },
+  { value: 'script', title: '跑仓库脚本', desc: '推脚本到目标机·有版本可回滚' },
+  { value: 'ansible', title: '跑 Playbook', desc: '多文件角色编排' },
   { value: 'python', title: '跑 Python 脚本', desc: '平台执行机本机跑' },
   { value: 'terraform', title: '跑 Terraform', desc: '暂未开放', disabled: true },
 ]
 
 // 入口标签/占位/提示随类型变（不再用固定的“命令字符串”误导）
 const ENTRY_META: Record<ExecType, { label: string; placeholder: string; hint: string }> = {
-  shell: { label: '命令', placeholder: 'bash scripts/x.sh 或直接写命令', hint: '在目标机上执行的 shell 命令；跑仓库里的脚本写 bash scripts/x.sh' },
+  shell: { label: '命令', placeholder: 'df -h / systemctl restart nginx', hint: '在目标机上即时执行的 shell 命令（ad-hoc，不落仓库、无版本、一般不可回滚）' },
+  script: { label: '仓库脚本路径', placeholder: 'scripts/dump_prod.sh', hint: 'runner 拉仓库后把脚本推到目标机临时目录执行，目标机不需预置该文件；有 code_ref 版本快照与 undo' },
   ansible: { label: 'Playbook 路径', placeholder: 'ansible/playbooks/app_restart.yml', hint: 'GitLab 仓库内的 playbook 相对路径' },
   python: { label: '脚本入口', placeholder: 'scripts/aliyun_create_ram_user.py', hint: '仓库内脚本，由平台执行机本机运行' },
   terraform: { label: '工作目录', placeholder: 'terraform/rds', hint: '暂未开放' },
@@ -271,7 +260,7 @@ const ENTRY_META: Record<ExecType, { label: string; placeholder: string; hint: s
 
 // exec_type → run_on 推断（与后端 EXEC_TYPE_RUN_ON 同表，界面不再暴露 run_on）
 function inferRunOn(t: ExecType): RunOn {
-  return t === 'ansible' || t === 'shell' ? 'target' : 'local'
+  return t === 'ansible' || t === 'shell' || t === 'script' ? 'target' : 'local'
 }
 
 function selectExec(opt: { value: ExecType; disabled?: boolean }) {
@@ -296,8 +285,6 @@ const formData = reactive({
   exec_type: 'shell' as ExecType,
   entry: '',
   risk_level: 'low',
-  default_code_ref: '',
-  default_target_resource_ids: [] as number[],
   target_models: [] as string[],
   timeout_sec: 600,
   rollbackable: true,
@@ -340,42 +327,13 @@ function addParamRow() {
 // 模型选项（允许的目标模型）
 const modelOptions = ref<IModel[]>([])
 
-// 目标主机选择器：running + 白名单模型过滤（与执行态硬校验同规则）
-const defaultTargetOptions = ref<IResourceOption[]>([])
-const resSearching = ref(false)
-const DEFAULT_TARGET_MODELS = ['aliyun_ecs', 'gcp_compute']
-
-const allowedModelCodes = computed(() =>
-  formData.target_models.length ? formData.target_models : DEFAULT_TARGET_MODELS,
-)
-
-async function searchDefaultTargets(keyword: string) {
-  if (!isTargetRun.value) return
-  resSearching.value = true
-  try {
-    const res = await getResourceOptions({ keyword: keyword || undefined, status: 'running', limit: 30 })
-    const items = res.data.filter(r => !r.model_code || allowedModelCodes.value.includes(r.model_code))
-    const merged = [...items]
-    for (const r of defaultTargetOptions.value) {
-      if (formData.default_target_resource_ids.includes(r.id) && !merged.some(m => m.id === r.id)) merged.push(r)
-    }
-    defaultTargetOptions.value = merged
-  } catch { /* ignore */ } finally { resSearching.value = false }
-}
-
-// 下拉展开时预加载一次（修复打开即空、需先输入才出选项的「选不到」）
-function onDefaultTargetOpen(v: boolean) {
-  if (v && defaultTargetOptions.value.length === 0) searchDefaultTargets('')
-}
-
 function emptyForm() {
   Object.assign(formData, {
     name: '', category: '', description: '', exec_type: 'shell', entry: '', risk_level: 'low',
-    default_code_ref: '', default_target_resource_ids: [], target_models: [],
+    target_models: [],
     timeout_sec: 600, rollbackable: true,
   })
   paramRows.value = []
-  defaultTargetOptions.value = []
   current.value = 0
   advOpen.value = false
 }
@@ -395,8 +353,6 @@ function handleEdit(record: IRunbook) {
     exec_type: record.exec_type,
     entry: record.entry,
     risk_level: record.risk_level,
-    default_code_ref: record.default_code_ref || '',
-    default_target_resource_ids: [...(record.default_target_resource_ids || [])],
     target_models: [...(record.target_models || [])],
     timeout_sec: record.timeout_sec,
     rollbackable: record.rollbackable,
@@ -421,26 +377,9 @@ function handleEdit(record: IRunbook) {
     })
   }
   paramRows.value = rows
-  hydrateTargetNames(formData.default_target_resource_ids)
   current.value = 0
   advOpen.value = false
   formVisible.value = true
-}
-
-// 编辑回显按 ID 拉名称补选项，失败退化为纯 ID 展示
-async function hydrateTargetNames(ids: number[]) {
-  if (!ids.length) return
-  try {
-    const results = await Promise.all(
-      ids.slice(0, 20).map(id => getResourceList({ page: 1, page_size: 1, keyword: String(id) }).catch(() => null)),
-    )
-    const opts: IResourceOption[] = []
-    results.forEach((r, i) => {
-      const hit = r?.data.items?.find(x => x.id === ids[i])
-      if (hit) opts.push({ id: hit.id, name: hit.name, model_code: null, provider: hit.provider, region: hit.region, status: hit.status, provider_id: hit.provider_id, labels: null })
-    })
-    defaultTargetOptions.value = opts
-  } catch { /* ignore */ }
 }
 
 function buildPayload(): IRunbookCreate | null {
@@ -486,8 +425,6 @@ function buildPayload(): IRunbookCreate | null {
     timeout_sec: formData.timeout_sec,
     rollbackable: formData.rollbackable,
     target_models: formData.target_models.length ? [...formData.target_models] : null,
-    default_target_resource_ids: isTargetRun.value ? [...formData.default_target_resource_ids] : [],
-    default_code_ref: formData.default_code_ref.trim() || null,
   }
   return payload
 }
@@ -563,7 +500,7 @@ onMounted(async () => {
 .sec-title:first-of-type { margin-top: $spacing-xs; }
 
 // 执行方式卡片
-.exec-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: $spacing-sm; margin-bottom: $spacing-md; }
+.exec-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: $spacing-sm; margin-bottom: $spacing-md; }
 .exec-card {
   padding: $spacing-sm 10px; border: 1px solid $border-color; border-radius: $radius-md;
   cursor: pointer; background: $bg-secondary; transition: all 0.15s;

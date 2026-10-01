@@ -52,7 +52,7 @@
         </a-row>
         <a-form-item label="跳板凭据（引用凭据目录，可空）">
           <a-select v-model="formData.ssh_credential" placeholder="留空 = 网关用目标机同一把钥匙" allow-clear allow-search>
-            <a-option v-for="c in sshCredentials" :key="c.id" :value="c.name">{{ c.name }}{{ c.cloud_account ? `（${c.cloud_account}）` : '' }}</a-option>
+            <a-option v-for="c in sshCredentials" :key="c.id" :value="c.name">{{ c.name }}</a-option>
           </a-select>
         </a-form-item>
         <a-form-item label="接管 VPC（多选，来源 CMDB 的 aliyun_vpc / gcp_vpc）" required>

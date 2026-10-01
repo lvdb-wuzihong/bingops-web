@@ -28,12 +28,10 @@ export interface ICredential {
   id: number
   name: string
   kind: CredentialKind
-  // v33：login_user 已删除——登录身份归主机标签 ssh_user，不属于钥匙材料
-  vault_path: string
-  vault_field: string | null
-  cloud_account: string | null
-  region: string | null
-  is_default: boolean
+  // v36：单一 Vault 引用（`path` 或 `path#field`）——早期拆成 vault_path/vault_field + 云账号/区域/默认，
+  // 反馈是“不知道哪个才是 Vault”；存储仍拆列由服务层 partition，API/表单不拆。login_user/cloud_account/region/is_default 已删除
+  vault_ref: string
+  // 探测状态由 runner 回填（bingops 不直连 Vault）
   verify_state: string
   last_verified_at: string | null
   remark: string | null
@@ -46,11 +44,7 @@ export interface ICredential {
 export interface ICredentialCreate {
   name: string
   kind: CredentialKind
-  vault_path: string
-  vault_field?: string | null
-  cloud_account?: string | null
-  region?: string | null
-  is_default?: boolean
+  vault_ref: string
   remark?: string | null
 }
 
