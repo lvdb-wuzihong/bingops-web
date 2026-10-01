@@ -32,6 +32,40 @@
           </a-select>
         </a-form-item>
 
+        <!-- v34 连接三件套：以谁的身份连、用哪把钥匙、走哪条路——执行时才确定，仅目标机型 -->
+        <template v-if="!isLocal">
+          <a-row :gutter="16">
+            <a-col :span="12">
+              <a-form-item label="登录用户">
+                <a-input v-model="formData.ssh_user" placeholder="如 ops / root" />
+                <template #extra><span class="rb-entry">留空则回落主机标签 ssh_user / runbook 存量</span></template>
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="SSH 钥匙">
+                <a-select v-model="formData.ssh_credential" placeholder="从凭据目录选（kind=ssh_key）" allow-clear allow-search>
+                  <a-option v-for="c in sshCredentials" :key="c.id" :value="c.name">{{ c.name }}{{ c.cloud_account ? `（${c.cloud_account}）` : '' }}</a-option>
+                </a-select>
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <a-row :gutter="16">
+            <a-col :span="12">
+              <a-form-item label="提权（become）">
+                <a-switch v-model="formData.become" size="small" />
+                <span class="rb-entry" style="margin-left: 6px">{{ formData.become ? 'sudo 提权' : '不提权' }}</span>
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="中转网关（可选）">
+                <a-select v-model="formData.gateway_name" placeholder="留空 = 按机器归属自动选路" allow-clear>
+                  <a-option v-for="g in gateways" :key="g.id" :value="g.name">{{ g.name }}（{{ g.host }}）</a-option>
+                </a-select>
+              </a-form-item>
+            </a-col>
+          </a-row>
+        </template>
+
         <!-- 参数动态表单：按 params_schema 逐条渲染（default 后端回填，只收集实际填写值） -->
         <template v-for="(spec, key) in paramsSchema" :key="String(key)">
           <a-form-item :label="`${String(key)}${spec.description ? ' · ' + spec.description : ''}`" :required="!!spec.required">
@@ -88,6 +122,10 @@ import { execTypeMeta } from '../../../api/job'
 import { getResourceList } from '../../../api/cmdb'
 import type { ICmdbResource } from '../../../api/cmdb'
 import { getModels } from '../../../api/model'
+import { getCredentials } from '../../../api/credential'
+import type { ICredential } from '../../../api/credential'
+import { getGateways } from '../../../api/gateway'
+import type { IJobGateway } from '../../../api/gateway'
 import type { IRunbook } from '../../../api/job'
 
 const props = defineProps<{ visible: boolean; runbookId?: number }>()
@@ -108,7 +146,26 @@ const formData = reactive({
   runbook_id: undefined as number | undefined,
   code_ref: '',
   target_ids: [] as number[],
+  // v34 连接三件套（执行时填，仅 target 型）
+  ssh_user: '',
+  ssh_credential: undefined as string | undefined,
+  become: false,
+  gateway_name: undefined as string | undefined,
 })
+
+// SSH 钥匙下拉数据源 = 凭据目录 kind=ssh_key；网关下拉 = job-gateways
+const sshCredentials = ref<ICredential[]>([])
+const gateways = ref<IJobGateway[]>([])
+async function fetchCredOptions() {
+  try {
+    const [cred, gw] = await Promise.all([
+      getCredentials({ kind: 'ssh_key', page: 1, page_size: 100 }),
+      getGateways({ page: 1, page_size: 100 }),
+    ])
+    sshCredentials.value = cred.data.items
+    gateways.value = gw.data.items
+  } catch { /* ignore */ }
+}
 
 // 参数/密钥动态值
 interface IParamSpec {
@@ -205,7 +262,12 @@ watch(() => props.visible, async (v) => {
   formData.runbook_id = props.runbookId
   formData.code_ref = ''
   formData.target_ids = []
+  formData.ssh_user = ''
+  formData.ssh_credential = undefined
+  formData.become = false
+  formData.gateway_name = undefined
   resetDynamicValues()
+  fetchCredOptions()
   try {
     const res = await jobApi.getRunbooks({ page: 1, page_size: 100 })
     runbookOptions.value = res.data.items
@@ -254,6 +316,13 @@ async function handleSubmit() {
       // 留空不发送 → 后端继承 runbook 默认（显式传 [] 会被视为「无目标」）
       target_resource_ids: !isLocal.value && formData.target_ids.length ? [...formData.target_ids] : undefined,
       code_ref: formData.code_ref.trim() || undefined,
+      // v34：target 型才发连接三件套；留空项不发送→后端走兜底链（主机标签/runbook 存量）
+      ...(isLocal.value ? {} : {
+        ssh_user: formData.ssh_user.trim() || undefined,
+        ssh_credential: formData.ssh_credential || undefined,
+        become: formData.become,
+        gateway_name: formData.gateway_name || undefined,
+      }),
     })
     Message.success('任务已下发')
     visibleProxy.value = false

@@ -51,13 +51,7 @@ export interface IRunbookCreate {
   run_on?: RunOn | null
   timeout_sec?: number | null
   rollbackable?: boolean
-  connection?: Record<string, unknown>
-  // 平铺糖字段，与 connection 共存时覆盖同名键
-  ssh_user?: string | null
-  ssh_key_ref?: string | null
-  become?: boolean | null
-  become_method?: string | null
-  become_user?: string | null
+  // v34：连接三件套（登录用户/密钥/提权）已撤到执行面，runbook 不再接收（多传被静默忽略）
   target_models?: string[] | null
   risk_level?: string
   default_target_resource_ids?: number[] | null
@@ -170,12 +164,21 @@ export interface IStepLog {
 export interface IExecutionCreate {
   runbook_id: number
   params?: Record<string, unknown>
-  // {变量名: Vault 钥匙名}；未传项由 secrets_schema 的 default_ref 回填
+  // {变量名: Vault 钥匙名 或 凭据名称}；未传项由 secrets_schema 的 default_ref 回填
   secrets?: Record<string, unknown>
   // 未传→继承 runbook.default_target_resource_ids；显式传 [] 视为无目标（target 型 400）
   target_resource_ids?: number[] | null
   // 未传→runbook.default_code_ref→平台配置；全空后端 400
   code_ref?: string | null
+  // ── v34 连接三件套：执行时才确定，不进 runbook 定义 ──
+  // 登录用户；未填→runbook.connection.ssh_user 存量兑底→400
+  ssh_user?: string | null
+  // 凭据目录条目名（kind=ssh_key），后端展开成 Vault 引用；未填→connection.ssh_key_ref 兑底→400
+  ssh_credential?: string | null
+  // 提权；未填→false（connection.become 存量兑底）
+  become?: boolean | null
+  // 强制走该网关 name；未填→按机器归属自动选路
+  gateway_name?: string | null
 }
 
 export interface IExecutionQuery extends IPageParams {

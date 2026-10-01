@@ -93,7 +93,7 @@
           <template #extra><span class="hint">{{ entryMeta.hint }}</span></template>
         </a-form-item>
         <!-- v31：凭据属于机器不属于任务——目标机与登录凭据执行期逐台解析，runbook 不指定 -->
-        <p v-if="isTargetRun" class="local-note"><icon-check-circle-fill class="ok-ic" /> 目标机与登录凭据在执行时按主机标签 / 凭据目录逐台解析，runbook 无需指定；如需任务级兜底钥匙见「高级设置」</p>
+        <p v-if="isTargetRun" class="local-note"><icon-check-circle-fill class="ok-ic" /> 目标机、登录用户与 SSH 钥匙均在「执行」时确定（凭据属于机器，v34）；runbook 只定义怎么跑与参数</p>
         <p v-else class="local-note"><icon-check-circle-fill class="ok-ic" /> 该类型由平台执行机本机运行，无需登录凭据；执行目标在「执行」时圈选</p>
         </template>
 
@@ -153,11 +153,6 @@
               <a-option v-for="r in defaultTargetOptions" :key="r.id" :value="r.id">{{ r.name }}（{{ r.provider_id || '#' + r.id }}）</a-option>
             </a-select>
           </a-form-item>
-          <!-- v31：任务级兜底（可选）——仅当目标机无 ssh_credential 标签且凭据目录无默认时才需要 -->
-          <a-row v-if="isTargetRun" :gutter="16">
-            <a-col :span="12"><a-form-item label="兜底登录用户"><a-input v-model="formData.ssh_user" placeholder="可空，如 ops" size="small" /></a-form-item></a-col>
-            <a-col :span="12"><a-form-item label="兜底登录密钥"><a-input v-model="formData.ssh_key_ref" placeholder="可空；主机无标签且目录无默认时才填" size="small" /></a-form-item></a-col>
-          </a-row>
           <a-row :gutter="16">
             <a-col :span="6"><a-form-item label="超时(秒)"><a-input-number v-model="formData.timeout_sec" :min="10" size="small" style="width: 100%" /></a-form-item></a-col>
             <a-col :span="6">
@@ -166,7 +161,6 @@
                 <span class="hint" style="margin-left: 6px">{{ formData.rollbackable ? '回滚重跑 undo' : '不可逆' }}</span>
               </a-form-item>
             </a-col>
-            <a-col :span="12"><a-form-item label="提权（become）"><a-switch v-model="formData.become" size="small" /><span class="hint" style="margin-left: 6px">{{ formData.become ? `sudo → ${formData.become_user || 'root'}` : '不提权' }}</span></a-form-item></a-col>
           </a-row>
           <a-form-item label="描述"><a-textarea v-model="formData.description" placeholder="可选" :auto-size="{ minRows: 2, maxRows: 4 }" /></a-form-item>
         </div>
@@ -302,10 +296,6 @@ const formData = reactive({
   exec_type: 'shell' as ExecType,
   entry: '',
   risk_level: 'low',
-  ssh_user: 'root',
-  ssh_key_ref: '',
-  become: false,
-  become_user: 'root',
   default_code_ref: '',
   default_target_resource_ids: [] as number[],
   target_models: [] as string[],
@@ -381,7 +371,6 @@ function onDefaultTargetOpen(v: boolean) {
 function emptyForm() {
   Object.assign(formData, {
     name: '', category: '', description: '', exec_type: 'shell', entry: '', risk_level: 'low',
-    ssh_user: 'root', ssh_key_ref: '', become: false, become_user: 'root',
     default_code_ref: '', default_target_resource_ids: [], target_models: [],
     timeout_sec: 600, rollbackable: true,
   })
@@ -399,7 +388,6 @@ function handleCreate() {
 
 function handleEdit(record: IRunbook) {
   editingId.value = record.id
-  const conn = record.connection || {}
   Object.assign(formData, {
     name: record.name,
     category: record.category || '',
@@ -407,10 +395,6 @@ function handleEdit(record: IRunbook) {
     exec_type: record.exec_type,
     entry: record.entry,
     risk_level: record.risk_level,
-    ssh_user: String(conn.ssh_user ?? 'root'),
-    ssh_key_ref: String(conn.ssh_key_ref ?? ''),
-    become: Boolean(conn.become),
-    become_user: String(conn.become_user ?? 'root'),
     default_code_ref: record.default_code_ref || '',
     default_target_resource_ids: [...(record.default_target_resource_ids || [])],
     target_models: [...(record.target_models || [])],
@@ -463,10 +447,6 @@ function buildPayload(): IRunbookCreate | null {
   const name = formData.name.trim()
   if (!name) { Message.warning('请填写名称'); return null }
   if (!formData.entry.trim()) { Message.warning(`请填写${entryMeta.value.label}`); return null }
-  if (isTargetRun.value && !formData.ssh_key_ref.trim() && !editingId.value) {
-    Message.warning('目标机任务必须填写登录密钥')
-    return null
-  }
 
   const paramsSchema: Record<string, Record<string, unknown>> = {}
   const secretsSchema: Record<string, Record<string, unknown>> = {}
@@ -508,15 +488,6 @@ function buildPayload(): IRunbookCreate | null {
     target_models: formData.target_models.length ? [...formData.target_models] : null,
     default_target_resource_ids: isTargetRun.value ? [...formData.default_target_resource_ids] : [],
     default_code_ref: formData.default_code_ref.trim() || null,
-  }
-  if (isTargetRun.value) {
-    payload.ssh_user = formData.ssh_user.trim() || null
-    payload.ssh_key_ref = formData.ssh_key_ref.trim() || null
-    payload.become = formData.become
-    payload.become_user = formData.become ? (formData.become_user.trim() || 'root') : null
-  } else {
-    // local 型显式清空 connection（编辑 ansible→python 时移除旧凭据）
-    payload.connection = {}
   }
   return payload
 }
