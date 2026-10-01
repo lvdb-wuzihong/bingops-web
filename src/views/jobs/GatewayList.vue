@@ -1,86 +1,46 @@
 <template>
   <div class="gateway-list">
     <a-card :bordered="false" class="list-card">
-      <a-tabs v-model:active-key="activeTab" @change="onTabChange">
-        <!-- ===== 网关管理 ===== -->
-        <a-tab-pane key="gateways" title="网关管理">
-          <div class="filter-bar">
-            <a-space>
-              <a-input-search v-model="queryParams.keyword" placeholder="搜索名称/主机" allow-clear style="width: 200px" @search="handleSearch" />
-            </a-space>
-            <a-space>
-              <a-button type="primary" @click="handleCreate"><template #icon><icon-plus /></template>新增网关</a-button>
-              <a-button @click="fetchData"><template #icon><icon-refresh /></template></a-button>
-            </a-space>
-          </div>
-          <a-alert class="gw-tip" type="info">
-            网关是<b>网络拓扑事实</b>，不是任务属性——runbook 不再写 <code>proxy_hop</code>，执行期按机器归属自动选路。
-            <code>scope</code> 命中任一维度即服务；<b>空 scope 不匹配任何机器</b>（不提供全局兜底，避免误配接管全部流量）。
-          </a-alert>
-          <a-table :data="tableData" :loading="loading" :columns="columns" :pagination="pagination" row-key="id" @page-change="(p: number) => { pagination.current = p; fetchData() }" @page-size-change="(s: number) => { pagination.pageSize = s; pagination.current = 1; fetchData() }">
-            <template #name="{ record }">
-              <span class="gw-name">{{ record.name }}</span>
-              <p class="gw-host mono">{{ record.login_user }}@{{ record.host }}:{{ record.port }}</p>
-            </template>
-            <template #cred="{ record }">
-              <span v-if="record.ssh_credential" class="mono">{{ record.ssh_credential }}</span>
-              <span v-else class="hint">复用目标机钥匙</span>
-            </template>
-            <template #scope="{ record }">
-              <a-space wrap size="mini">
-                <a-tag v-for="t in scopeTags(record.scope)" :key="t" size="small">{{ t }}</a-tag>
-                <span v-if="!scopeTags(record.scope).length" class="hint">空（不匹配）</span>
-              </a-space>
-            </template>
-            <template #priority="{ record }">{{ record.priority }}</template>
-            <template #is_active="{ record }">
-              <a-switch :model-value="record.is_active" size="small" :loading="togglingId === record.id" @change="(v: string | number | boolean) => handleToggle(record, Boolean(v))" />
-            </template>
-            <template #actions="{ record }">
-              <a-space>
-                <a-button type="text" size="small" @click="handleEdit(record)"><template #icon><icon-edit /></template></a-button>
-                <a-popconfirm content="确定删除该网关？" @ok="handleDelete(record.id)">
-                  <a-button type="text" size="small" status="danger"><template #icon><icon-delete /></template></a-button>
-                </a-popconfirm>
-              </a-space>
-            </template>
-          </a-table>
-        </a-tab-pane>
-
-        <!-- ===== 可达性总览 ===== -->
-        <a-tab-pane key="reachability" title="主机可达性">
-          <div class="filter-bar">
-            <span class="hint">静态视图：凭据齐不齐、走哪条路、缺什么。无网关 = 直连，不算缺口。</span>
-            <a-button size="small" :loading="reachLoading" @click="fetchReachability"><template #icon><icon-refresh /></template></a-button>
-          </div>
-          <a-row :gutter="16" class="reach-stat">
-            <a-col :span="6"><a-statistic title="主机总数" :value="reachData.length" /></a-col>
-            <a-col :span="6"><a-statistic title="凭据缺失" :value="reachMissingCredCount" :value-style="{ color: reachMissingCredCount > 0 ? '#ff4d4f' : undefined }" /></a-col>
-            <a-col :span="6"><a-statistic title="走网关" :value="reachViaGatewayCount" /></a-col>
-            <a-col :span="6"><a-statistic title="直连" :value="reachDirectCount" /></a-col>
-          </a-row>
-          <a-table :data="reachData" :loading="reachLoading" :columns="reachColumns" :pagination="{ pageSize: 20, showTotal: true }" row-key="resource_id" size="small">
-            <template #host="{ record }">
-              <span class="gw-name">{{ record.name }}</span>
-              <p class="gw-host mono">{{ record.ip || '无 IP' }} · {{ record.model_code || '-' }}</p>
-            </template>
-            <template #credential="{ record }">
-              <a-tag v-if="record.credential_ok" size="small" color="green">{{ record.credential || '已解析' }}</a-tag>
-              <a-tag v-else size="small" color="red">缺失</a-tag>
-            </template>
-            <template #gateway="{ record }">
-              <a-tag v-if="record.gateway" size="small" color="orange">{{ record.gateway }}</a-tag>
-              <a-tag v-else size="small" color="gray">直连</a-tag>
-            </template>
-            <template #missing="{ record }">
-              <a-space wrap size="mini">
-                <a-tag v-for="(m, i) in record.missing" :key="i" size="small" color="red">{{ m }}</a-tag>
-                <span v-if="!record.missing.length" class="hint">-</span>
-              </a-space>
-            </template>
-          </a-table>
-        </a-tab-pane>
-      </a-tabs>
+      <div class="filter-bar">
+        <span class="panel-title">中转网关</span>
+        <a-space>
+          <a-input-search v-model="queryParams.keyword" placeholder="搜索名称/主机" allow-clear style="width: 200px" @search="handleSearch" />
+          <a-button type="primary" @click="handleCreate"><template #icon><icon-plus /></template>新增网关</a-button>
+          <a-button @click="fetchData"><template #icon><icon-refresh /></template></a-button>
+        </a-space>
+      </div>
+      <a-alert class="gw-tip" type="info">
+        网关是<b>网络拓扑事实</b>，不是任务属性——runbook 不再写 <code>proxy_hop</code>，执行期按机器归属自动选路。
+        <code>scope</code> 命中任一维度即服务；<b>空 scope 不匹配任何机器</b>（不提供全局兜底，避免误配接管全部流量）。
+      </a-alert>
+      <a-table :data="tableData" :loading="loading" :columns="columns" :pagination="pagination" row-key="id" @page-change="(p: number) => { pagination.current = p; fetchData() }" @page-size-change="(s: number) => { pagination.pageSize = s; pagination.current = 1; fetchData() }">
+        <template #name="{ record }">
+          <span class="gw-name">{{ record.name }}</span>
+          <p class="gw-host mono">{{ record.login_user }}@{{ record.host }}:{{ record.port }}</p>
+        </template>
+        <template #cred="{ record }">
+          <span v-if="record.ssh_credential" class="mono">{{ record.ssh_credential }}</span>
+          <span v-else class="hint">复用目标机钥匙</span>
+        </template>
+        <template #scope="{ record }">
+          <a-space wrap size="mini">
+            <a-tag v-for="t in scopeTags(record.scope)" :key="t" size="small">{{ t }}</a-tag>
+            <span v-if="!scopeTags(record.scope).length" class="hint">空（不匹配）</span>
+          </a-space>
+        </template>
+        <template #priority="{ record }">{{ record.priority }}</template>
+        <template #is_active="{ record }">
+          <a-switch :model-value="record.is_active" size="small" :loading="togglingId === record.id" @change="(v: string | number | boolean) => handleToggle(record, Boolean(v))" />
+        </template>
+        <template #actions="{ record }">
+          <a-space>
+            <a-button type="text" size="small" @click="handleEdit(record)"><template #icon><icon-edit /></template></a-button>
+            <a-popconfirm content="确定删除该网关？" @ok="handleDelete(record.id)">
+              <a-button type="text" size="small" status="danger"><template #icon><icon-delete /></template></a-button>
+            </a-popconfirm>
+          </a-space>
+        </template>
+      </a-table>
     </a-card>
 
     <!-- 新增/编辑网关 -->
@@ -112,15 +72,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconEdit, IconDelete, IconRefresh } from '@arco-design/web-vue/es/icon'
 import * as gwApi from '../../api/gateway'
-import type { IJobGateway, IGatewayCreate, IHostReachability } from '../../api/gateway'
+import type { IJobGateway, IGatewayCreate } from '../../api/gateway'
 import { getCredentials } from '../../api/credential'
 import type { ICredential } from '../../api/credential'
 
-const activeTab = ref('gateways')
 const loading = ref(false)
 const tableData = ref<IJobGateway[]>([])
 const queryParams = reactive({ keyword: '' })
@@ -235,31 +194,6 @@ async function handleDelete(id: number) {
   try { await gwApi.deleteGateway(id); Message.success('已删除'); fetchData() } catch { /* 拦截器已提示 */ }
 }
 
-// ========== 可达性 ==========
-const reachData = ref<IHostReachability[]>([])
-const reachLoading = ref(false)
-const reachColumns = [
-  { title: '主机', slotName: 'host', width: 200 },
-  { title: '凭据', slotName: 'credential', width: 150 },
-  { title: '路由', slotName: 'gateway', width: 130 },
-  { title: '缺口', slotName: 'missing' },
-]
-const reachMissingCredCount = computed(() => reachData.value.filter(r => !r.credential_ok).length)
-const reachViaGatewayCount = computed(() => reachData.value.filter(r => r.gateway).length)
-const reachDirectCount = computed(() => reachData.value.filter(r => !r.gateway && r.gateway_ok).length)
-
-async function fetchReachability() {
-  reachLoading.value = true
-  try {
-    const res = await gwApi.getReachability({ limit: 500 })
-    reachData.value = res.data
-  } catch { /* 拦截器已提示 */ } finally { reachLoading.value = false }
-}
-
-function onTabChange(key: string | number) {
-  if (key === 'reachability' && !reachData.value.length) fetchReachability()
-}
-
 onMounted(() => { fetchData(); fetchSshCredentials() })
 </script>
 
@@ -268,7 +202,8 @@ onMounted(() => { fetchData(); fetchSshCredentials() })
 
 .gateway-list { width: 100%; }
 .list-card { background: $bg-card; border: 1px solid $border-color-light; }
-.filter-bar { display: flex; justify-content: space-between; align-items: center; margin: $spacing-sm 0 $spacing-md; flex-wrap: wrap; gap: $spacing-sm; }
+.filter-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: $spacing-md; flex-wrap: wrap; gap: $spacing-sm; }
+.panel-title { font-size: $font-size-lg; font-weight: 600; color: $text-primary; }
 .gw-tip { margin-bottom: $spacing-md; code { font-family: $font-mono; background: rgba(22, 119, 255, 0.06); padding: 0 4px; border-radius: 3px; } }
 
 .gw-name { font-weight: 500; color: $text-primary; }
@@ -276,6 +211,4 @@ onMounted(() => { fetchData(); fetchSshCredentials() })
 .mono { font-family: $font-mono; }
 .hint { font-size: $font-size-xs; color: $text-hint; }
 .scope-divider { margin: $spacing-xs 0 $spacing-sm; font-size: $font-size-sm; color: $text-hint; }
-
-.reach-stat { margin-bottom: $spacing-md; }
 </style>
