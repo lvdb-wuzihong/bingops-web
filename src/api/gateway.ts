@@ -1,15 +1,8 @@
 import request from '../utils/request'
 import type { IPaginatedData, IPageParams } from '../types/common'
 
-// ========== 中转网关（v32：网络拓扑事实，非任务属性） ==========
-
-// scope 多维匹配：命中任一即服务；空 scope 不匹配任何机器（无全局兜底）
-export interface IGatewayScope {
-  vpc_ids: string[]
-  cloud_accounts: string[]
-  regions: string[]
-  resource_ids: number[]
-}
+// ========== 中转网关（v35：关联维度只留 VPC） ==========
+// 网络拓扑事实，非任务属性。一个 VPC 只允许一条启用网关接管（重复后端 409 指名）。
 
 export interface IJobGateway {
   id: number
@@ -19,8 +12,8 @@ export interface IJobGateway {
   login_user: string
   // 引用 credentials.name（kind=ssh_key）；空 = 网关用目标机同一把钥匙
   ssh_credential: string | null
-  scope: Partial<IGatewayScope>
-  priority: number
+  // 接管的 VPC（唯一关联维度）；非空、去重；值 = VPC 资源的 provider_id（如 vpc-2ze…）
+  vpc_ids: string[]
   remark: string | null
   is_active: boolean
   created_by: number | null
@@ -34,8 +27,8 @@ export interface IGatewayCreate {
   port?: number
   login_user?: string
   ssh_credential?: string | null
-  scope?: Partial<IGatewayScope>
-  priority?: number
+  // 必填非空：留空该网关匹配不到任何机器（刻意无全局兜底）
+  vpc_ids: string[]
   remark?: string | null
 }
 
@@ -45,24 +38,6 @@ export interface IGatewayUpdate extends Partial<IGatewayCreate> {
 
 export interface IGatewayQuery extends IPageParams {
   keyword?: string
-}
-
-// 主机可达性视图的一行
-export interface IHostReachability {
-  resource_id: number
-  name: string
-  ip: string | null
-  model_code: string | null
-  cloud_account: string | null
-  region: string | null
-  vpc_id: string | null
-  credential: string | null
-  credential_ok: boolean
-  // 走哪个网关；null 且 gateway_ok=true 表示直连
-  gateway: string | null
-  gateway_ok: boolean
-  // 缺口原因，后端已给文本，前端不再推断
-  missing: string[]
 }
 
 export function getGateways(params?: IGatewayQuery) {
@@ -79,9 +54,4 @@ export function updateGateway(id: number, data: IGatewayUpdate) {
 
 export function deleteGateway(id: number) {
   return request.delete<null>(`/api/v1/job-gateways/${id}`)
-}
-
-// 静态可达总览：凭据齐不齐、走哪条路、缺什么（无网关=直连，不算缺口）
-export function getReachability(params?: { model_code?: string[]; limit?: number }) {
-  return request.get<IHostReachability[]>('/api/v1/job-gateways/reachability', { params })
 }

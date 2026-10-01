@@ -33,6 +33,9 @@ export interface IResourceQuery {
   cloud_account?: string
   region?: string
   keyword?: string
+  // v35：按动态字段值精确检索（如 IP/连接地址），field_key 限定只看某字段（如 vpc_id），不传则全字段匹配
+  field_value?: string
+  field_key?: string
   page?: number
   page_size?: number
 }
