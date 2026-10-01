@@ -28,7 +28,7 @@ export interface ICredential {
   id: number
   name: string
   kind: CredentialKind
-  login_user: string | null
+  // v33：login_user 已删除——登录身份归主机标签 ssh_user，不属于钥匙材料
   vault_path: string
   vault_field: string | null
   cloud_account: string | null
@@ -48,7 +48,6 @@ export interface ICredentialCreate {
   kind: CredentialKind
   vault_path: string
   vault_field?: string | null
-  login_user?: string | null
   cloud_account?: string | null
   region?: string | null
   is_default?: boolean

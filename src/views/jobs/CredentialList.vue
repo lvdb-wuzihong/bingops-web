@@ -19,7 +19,7 @@
 
       <a-alert class="cred-tip" type="info">
         只登记 Vault 引用与元数据，<b>任何字段都不接受明文凭据</b>（含 <code>-----BEGIN</code> / <code>PRIVATE KEY</code> 特征串会被拒）。
-        主机通过标签 <code>ssh_credential = 凭据名称</code> 绑定钥匙，执行时逐台解析——凭据属于机器，不属于任务。
+        主机通过标签 <code>ssh_credential = 凭据名称</code> 绑定钥匙、<code>ssh_user = 登录用户</code> 决定身份（v33：身份归主机，不在凭据上）。
       </a-alert>
 
       <a-table
@@ -38,7 +38,6 @@
           <div class="mono ref-path">{{ record.vault_path }}<span v-if="record.vault_field">#{{ record.vault_field }}</span></div>
           <div v-if="record.cloud_account || record.region" class="ref-scope">{{ [record.cloud_account, record.region].filter(Boolean).join(' / ') }}</div>
         </template>
-        <template #login_user="{ record }">{{ record.login_user || '-' }}</template>
         <template #verify="{ record }">
           <a-tag size="small" :color="VERIFY_STATE_MAP[record.verify_state]?.color">{{ VERIFY_STATE_MAP[record.verify_state]?.text || record.verify_state }}</a-tag>
           <span v-if="record.last_verified_at" class="verify-time">{{ formatTime(record.last_verified_at) }}</span>
@@ -58,7 +57,7 @@
       </a-table>
     </a-card>
 
-    <!-- 新增/编辑弹窗：无任何明文凭据输入框 -->
+    <!-- 新增/编辑弹窗：字段随 kind 变（后端字段统一，这里按类型裁剪标签/必填/适用范围） -->
     <a-modal v-model:visible="formVisible" :title="editingId ? '编辑凭据' : '新增凭据'" :width="600" :ok-loading="formLoading" @ok="handleSubmit">
       <a-form :model="formData" layout="vertical">
         <a-row :gutter="16">
@@ -75,22 +74,32 @@
             </a-form-item>
           </a-col>
         </a-row>
+
+        <a-alert class="kind-guide" :content="kindForm.guide" type="info" />
+
         <a-row :gutter="16">
           <a-col :span="16">
-            <a-form-item label="Vault 路径" required>
-              <a-input v-model="formData.vault_path" placeholder="如 ssh/keys/povison" />
-              <template #extra><span class="hint">只填路径，绝不填凭据值</span></template>
+            <a-form-item :label="kindForm.pathLabel" required>
+              <a-input v-model="formData.vault_path" :placeholder="kindForm.pathPlaceholder" />
+              <template #extra><span class="hint">只填路径，绝不填凭据值{{ kindForm.pathHint ? '；' + kindForm.pathHint : '' }}</span></template>
             </a-form-item>
           </a-col>
           <a-col :span="8">
-            <a-form-item label="字段名（可选）"><a-input v-model="formData.vault_field" placeholder="如 private_key" /></a-form-item>
+            <a-form-item :label="kindForm.fieldLabel" :required="kindForm.fieldRequired">
+              <a-input v-model="formData.vault_field" :placeholder="kindForm.fieldPlaceholder" />
+            </a-form-item>
           </a-col>
         </a-row>
-        <a-row :gutter="16">
-          <a-col :span="8"><a-form-item label="登录用户"><a-input v-model="formData.login_user" placeholder="该钥匙对应系统用户" /></a-form-item></a-col>
-          <a-col :span="8"><a-form-item label="云账号（可选）"><a-input v-model="formData.cloud_account" placeholder="适用范围，留空不限" /></a-form-item></a-col>
-          <a-col :span="8"><a-form-item label="区域（可选）"><a-input v-model="formData.region" placeholder="如 cn-guangzhou" /></a-form-item></a-col>
-        </a-row>
+        <p v-if="kindForm.fieldHint" class="hint field-hint">{{ kindForm.fieldHint }}</p>
+
+        <template v-if="kindForm.showScope">
+          <a-divider orientation="left" class="scope-divider">适用范围（可空 = 不限）</a-divider>
+          <a-row :gutter="16">
+            <a-col :span="12"><a-form-item label="云账号"><a-input v-model="formData.cloud_account" :placeholder="kindForm.scopePlaceholder || '适用范围'" /></a-form-item></a-col>
+            <a-col :span="12"><a-form-item label="区域"><a-input v-model="formData.region" placeholder="如 cn-guangzhou" /></a-form-item></a-col>
+          </a-row>
+        </template>
+
         <a-form-item label="备注"><a-textarea v-model="formData.remark" placeholder="可选" :auto-size="{ minRows: 2, maxRows: 4 }" /></a-form-item>
         <a-form-item>
           <a-checkbox v-model="formData.is_default">设为该类型默认（同 kind 唯一；多命中无默认时执行报 400）</a-checkbox>
@@ -115,7 +124,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconEdit, IconDelete, IconRefresh, IconSearch } from '@arco-design/web-vue/es/icon'
 import * as credApi from '../../api/credential'
@@ -128,10 +137,9 @@ const queryParams = reactive({ kind: undefined as string | undefined, keyword: '
 const pagination = reactive({ current: 1, pageSize: 15, total: 0, showTotal: true, showPageSize: true })
 
 const columns = [
-  { title: '名称', slotName: 'name', width: 200 },
-  { title: '类型', slotName: 'kind', width: 110 },
-  { title: 'Vault 引用', slotName: 'ref', width: 240 },
-  { title: '登录用户', slotName: 'login_user', width: 100 },
+  { title: '名称', slotName: 'name', width: 220 },
+  { title: '类型', slotName: 'kind', width: 120 },
+  { title: 'Vault 引用', slotName: 'ref', width: 260 },
   { title: '验证状态', slotName: 'verify', width: 160 },
   { title: '启用', slotName: 'is_active', width: 70 },
   { title: '操作', slotName: 'actions', width: 170 },
@@ -159,6 +167,52 @@ async function fetchData() {
 
 function handleSearch() { pagination.current = 1; fetchData() }
 
+// ========== 按 kind 区分的表单规格（后端字段统一，这里裁剪标签/必填/适用范围/引导） ==========
+interface IKindForm {
+  pathLabel: string; pathPlaceholder: string; pathHint?: string
+  fieldLabel: string; fieldPlaceholder: string; fieldRequired: boolean; fieldHint?: string
+  showScope: boolean; scopePlaceholder?: string
+  guide: string
+}
+const KIND_FORM: Record<string, IKindForm> = {
+  ssh_key: {
+    pathLabel: '私钥 Vault 路径', pathPlaceholder: 'ssh/keys/povison', pathHint: '私钥文件型指向密钥文件路径',
+    fieldLabel: '字段名（可选）', fieldPlaceholder: 'private_key', fieldRequired: false,
+    fieldHint: 'KV 引擎把私钥存成某字段时才填；整段私钥作为文件读取则留空',
+    showScope: true, scopePlaceholder: '这把钥匙能登哪些云账号',
+    guide: 'SSH 目标机钥匙。登录用户不在此填——由主机标签 ssh_user 决定（v33）；中转网关的跳板凭据也引用此类条目。',
+  },
+  cloud_ak: {
+    pathLabel: '云 AK 的 Vault 路径', pathPlaceholder: 'aliyun/prod-ops',
+    fieldLabel: '字段名', fieldPlaceholder: 'access_key_id', fieldRequired: true,
+    fieldHint: 'AK 与 SK 通常建两条凭据，指向同一 path 的不同 field（access_key_id / access_key_secret）',
+    showScope: true, scopePlaceholder: '如 aliyun 主账号 ID',
+    guide: '云访问密钥。执行期按目标机归属（云账号 + 区域）唯一命中；只登记引用，真值在 Vault。',
+  },
+  db_password: {
+    pathLabel: '数据库口令 Vault 路径', pathPlaceholder: 'magento2/prod/readonly',
+    fieldLabel: '字段名', fieldPlaceholder: 'password', fieldRequired: true,
+    fieldHint: 'DB 条目几乎都是 KV 多字段（user / password），必须指定要取哪个字段',
+    showScope: false,
+    guide: '数据库口令。作为 runbook secrets 入参被引用，执行时按同名环境变量注入脚本/playbook。',
+  },
+  api_token: {
+    pathLabel: 'API Token Vault 路径', pathPlaceholder: 'gitlab/bot-token',
+    fieldLabel: '字段名', fieldPlaceholder: 'token', fieldRequired: true,
+    fieldHint: '指向存放令牌的字段',
+    showScope: false,
+    guide: '第三方 API 令牌。只登记 Vault 引用，绝不存明文。',
+  },
+  kubeconfig: {
+    pathLabel: 'kubeconfig Vault 路径', pathPlaceholder: 'k8s/prod-cluster',
+    fieldLabel: '字段名（可选）', fieldPlaceholder: 'config', fieldRequired: false,
+    fieldHint: '整份 kubeconfig 作为一个值时留空；KV 存多字段时指定',
+    showScope: false,
+    guide: 'K8s 集群访问配置（kubeconfig）。',
+  },
+}
+const kindForm = computed<IKindForm>(() => KIND_FORM[formData.kind] || KIND_FORM.ssh_key)
+
 // ========== 启停 ==========
 const togglingId = ref<number | null>(null)
 async function handleToggle(record: ICredential, isActive: boolean) {
@@ -176,13 +230,13 @@ const formLoading = ref(false)
 const editingId = ref<number | null>(null)
 const formData = reactive({
   name: '', kind: 'ssh_key' as CredentialKind, vault_path: '', vault_field: '',
-  login_user: '', cloud_account: '', region: '', is_default: false, remark: '',
+  cloud_account: '', region: '', is_default: false, remark: '',
 })
 
 function resetForm() {
   Object.assign(formData, {
     name: '', kind: 'ssh_key', vault_path: '', vault_field: '',
-    login_user: '', cloud_account: '', region: '', is_default: false, remark: '',
+    cloud_account: '', region: '', is_default: false, remark: '',
   })
 }
 
@@ -192,7 +246,7 @@ function handleEdit(record: ICredential) {
   editingId.value = record.id
   Object.assign(formData, {
     name: record.name, kind: record.kind, vault_path: record.vault_path, vault_field: record.vault_field || '',
-    login_user: record.login_user || '', cloud_account: record.cloud_account || '', region: record.region || '',
+    cloud_account: record.cloud_account || '', region: record.region || '',
     is_default: record.is_default, remark: record.remark || '',
   })
   formVisible.value = true
@@ -200,13 +254,16 @@ function handleEdit(record: ICredential) {
 
 async function handleSubmit() {
   if (!formData.name.trim()) { Message.warning('请填写凭据名称'); return }
-  if (!formData.vault_path.trim()) { Message.warning('请填写 Vault 路径'); return }
+  if (!formData.vault_path.trim()) { Message.warning(`请填写${kindForm.value.pathLabel}`); return }
+  if (kindForm.value.fieldRequired && !formData.vault_field.trim()) {
+    Message.warning(`${kindForm.value.fieldLabel.replace(/（.*/, '')}不能为空`)
+    return
+  }
   const payload: ICredentialCreate = {
     name: formData.name.trim(),
     kind: formData.kind,
     vault_path: formData.vault_path.trim(),
     vault_field: formData.vault_field.trim() || null,
-    login_user: formData.login_user.trim() || null,
     cloud_account: formData.cloud_account.trim() || null,
     region: formData.region.trim() || null,
     is_default: formData.is_default,
@@ -264,6 +321,10 @@ onMounted(fetchData)
 .ref-path { color: $text-body; word-break: break-all; }
 .ref-scope { font-size: $font-size-xs; color: $text-hint; margin-top: 2px; }
 .verify-time { display: block; font-size: $font-size-xs; color: $text-hint; margin-top: 2px; }
+
+.kind-guide { margin-bottom: $spacing-md; font-size: $font-size-xs; }
+.field-hint { margin: -8px 0 $spacing-sm; }
+.scope-divider { margin: $spacing-xs 0 $spacing-sm; font-size: $font-size-sm; color: $text-hint; }
 
 .usage-stat { margin-bottom: $spacing-md; }
 .usage-table { margin-top: $spacing-sm; }

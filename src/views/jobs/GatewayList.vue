@@ -97,7 +97,7 @@
         </a-row>
         <a-form-item label="跳板凭据（引用凭据目录，可空）">
           <a-select v-model="formData.ssh_credential" placeholder="留空 = 网关用目标机同一把钥匙" allow-clear allow-search>
-            <a-option v-for="c in sshCredentials" :key="c.id" :value="c.name">{{ c.name }}（{{ c.login_user || '无用户' }}）</a-option>
+            <a-option v-for="c in sshCredentials" :key="c.id" :value="c.name">{{ c.name }}{{ c.cloud_account ? `（${c.cloud_account}）` : '' }}</a-option>
           </a-select>
         </a-form-item>
         <a-divider orientation="left" class="scope-divider">适用范围（至少填一个维度）</a-divider>
