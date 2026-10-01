@@ -237,7 +237,7 @@ const editingId = ref<number | null>(null)
 // 执行方式卡片：中文语义优先，terraform 门控未开置灰不可选
 const EXEC_CARDS: { value: ExecType; title: string; desc: string; disabled?: boolean }[] = [
   { value: 'shell', title: '跑一条命令', desc: '目标机即时执行·不落仓库' },
-  { value: 'script', title: '跑仓库脚本', desc: '推脚本到目标机·有版本可回滚' },
+  { value: 'script', title: '跑仓库脚本', desc: '推脚本到目标机·版本可锁定' },
   { value: 'ansible', title: '跑 Playbook', desc: '多文件角色编排' },
   { value: 'python', title: '跑 Python 脚本', desc: '平台执行机本机跑' },
   { value: 'terraform', title: '跑 Terraform', desc: '暂未开放', disabled: true },
@@ -245,8 +245,8 @@ const EXEC_CARDS: { value: ExecType; title: string; desc: string; disabled?: boo
 
 // 入口标签/占位/提示随类型变（不再用固定的“命令字符串”误导）
 const ENTRY_META: Record<ExecType, { label: string; placeholder: string; hint: string }> = {
-  shell: { label: '命令', placeholder: 'df -h / systemctl restart nginx', hint: '在目标机上即时执行的 shell 命令（ad-hoc，不落仓库、无版本、一般不可回滚）' },
-  script: { label: '仓库脚本路径', placeholder: 'scripts/dump_prod.sh', hint: 'runner 拉仓库后把脚本推到目标机临时目录执行，目标机不需预置该文件；有 code_ref 版本快照与 undo' },
+  shell: { label: '命令', placeholder: 'df -h / systemctl restart nginx', hint: '在目标机上即时执行的 shell 命令（ad-hoc，不落仓库、无版本）' },
+  script: { label: '仓库脚本路径', placeholder: 'scripts/dump_prod.sh', hint: 'runner 拉仓库后把脚本推到目标机临时目录执行，目标机不需预置该文件；按 code_ref 固定版本快照' },
   ansible: { label: 'Playbook 路径', placeholder: 'ansible/playbooks/app_restart.yml', hint: 'GitLab 仓库内的 playbook 相对路径' },
   python: { label: '脚本入口', placeholder: 'scripts/aliyun_create_ram_user.py', hint: '仓库内脚本，由平台执行机本机运行' },
   terraform: { label: '工作目录', placeholder: 'terraform/rds', hint: '暂未开放' },
