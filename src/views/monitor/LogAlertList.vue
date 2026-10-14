@@ -104,6 +104,9 @@
           <a-tooltip v-if="detailsText(record)" :content="detailsText(record)"><span class="details-cell">{{ detailsText(record) }}</span></a-tooltip>
           <span v-else>-</span>
         </template>
+        <template #op="{ record }">
+          <a-button type="text" size="mini" @click="$router.push({ name: 'AlertEventDetail', params: { id: String(record.id) } })">详情</a-button>
+        </template>
       </a-table>
     </a-card>
   </div>
@@ -147,6 +150,7 @@ const columns = [
   { title: 'labels', slotName: 'labels', width: 200 },
   { title: '关联资源', slotName: 'resource_ids', width: 100 },
   { title: '明细', slotName: 'details', ellipsis: true, tooltip: true },
+  { title: '操作', slotName: 'op', width: 66, fixed: 'right' as const },
 ]
 
 const kpi = computed(() => {

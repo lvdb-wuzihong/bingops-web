@@ -54,6 +54,11 @@ export function getAlertEvents(params?: IAlertEventQuery) {
   return request.get<IPaginatedData<IAlertEvent>>('/api/v1/alerts/events', { params })
 }
 
+// 单事件详情（飞书卡片「事件详情」按钮落地：{frontend_base_url}/alerts/events/{event_id}）
+export function getAlertEvent(id: number) {
+  return request.get<IAlertEvent>(`/api/v1/alerts/events/${id}`)
+}
+
 // ========== 统计 ==========
 
 export interface IAlertStatsGroup {

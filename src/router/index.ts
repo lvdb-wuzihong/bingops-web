@@ -184,6 +184,13 @@ const routes: RouteRecordRaw[] = [
         ],
       },
       {
+        // 飞书卡片「事件详情」按钮落地页：路径固定为 /alerts/events/{event_id}（绝对路径子路由，渲染在 MainLayout 内）
+        path: '/alerts/events/:id',
+        name: 'AlertEventDetail',
+        component: () => import('../views/monitor/AlertEventDetailView.vue'),
+        meta: { title: '告警事件详情', hidden: true },
+      },
+      {
         path: 'tickets',
         name: 'Tickets',
         redirect: '/tickets/list',
