@@ -186,6 +186,9 @@ export interface IMonitoringSource {
   // 凭据引用名（真凭据在执行器侧 env；平台不落密码）
   password_ref: string
   secure: boolean
+  // victoria/prometheus 的完整查询地址（Grafana 数据源 URL 同款，不含 /api/v1/query 尾巴）；
+  // clickhouse 不用；留空时平台/执行器按 host/port 拼接（租户前缀场景必须手填）
+  url: string | null
   enabled: boolean
   created_at: string
   updated_at: string
@@ -200,6 +203,7 @@ export interface IMonitoringSourceCreate {
   username?: string | null
   password_ref: string
   secure?: boolean
+  url?: string | null
   enabled?: boolean
 }
 
@@ -210,6 +214,7 @@ export interface IMonitoringSourceUpdate {
   username?: string | null
   password_ref?: string
   secure?: boolean
+  url?: string | null
   enabled?: boolean
 }
 

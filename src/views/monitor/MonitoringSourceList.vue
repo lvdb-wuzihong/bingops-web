@@ -25,7 +25,8 @@
           <a-tag size="small" :color="typeColor(record.type)">{{ record.type }}</a-tag>
         </template>
         <template #endpoint="{ record }">
-          <span class="endpoint">{{ record.host }}:{{ record.port }}<template v-if="record.secure"> (TLS)</template></span>
+          <div v-if="record.url" class="endpoint">{{ record.url }}</div>
+          <span class="endpoint" :class="{ 'url-fallback': record.url }">{{ record.host }}:{{ record.port }}<template v-if="record.secure"> (TLS)</template></span>
           <div v-if="record.database_name" class="src-region">db: {{ record.database_name }}</div>
         </template>
         <template #credential="{ record }">
@@ -77,6 +78,13 @@
             </a-form-item>
           </a-col>
         </a-row>
+        <!-- clickhouse 用 host/port/database；victoria/prometheus 推荐填完整查询地址，host/port 降为兑底 -->
+        <a-form-item v-if="!isClickhouse" field="url" label="查询地址（url）">
+          <a-input v-model="formData.url" placeholder="https://vmselect.xxx/select/0/prometheus" />
+          <template #extra>
+            <span class="cred-tip">victoria/prometheus 的完整查询地址（Grafana 数据源 URL 同款，不含 /api/v1/query 尾巴）；留空时平台按 host/port 拼接——带租户路径前缀（如 /select/0/prometheus）时必须手填</span>
+          </template>
+        </a-form-item>
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item field="database_name" label="数据库（CH）">
@@ -110,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { IconPlus, IconRefresh } from '@arco-design/web-vue/es/icon'
 import * as alertApi from '../../api/alert'
@@ -146,8 +154,11 @@ const formLoading = ref(false)
 const editingId = ref<number | null>(null)
 const formData = reactive({
   name: '', type: 'clickhouse' as MonitoringSourceType, host: '', port: 9000,
-  database_name: '', username: '', password_ref: '', secure: false, enabled: true,
+  database_name: '', username: '', password_ref: '', secure: false, url: '', enabled: true,
 })
+
+// clickhouse 走 host/port/database；其余类型用 url 查询地址
+const isClickhouse = computed(() => formData.type === 'clickhouse')
 
 // 凭据取值约定（monitoring-design §12）：NO_AUTH = 无认证，执行器连接时不带凭据；
 // 其余值 = 执行器侧 env 变量名（os.environ[ref] 解析，缺失 fail fast）
@@ -168,6 +179,7 @@ function openSourceModal(src: IMonitoringSource | null) {
     username: src?.username ?? '',
     password_ref: src?.password_ref ?? '',
     secure: src?.secure ?? false,
+    url: src?.url ?? '',
     enabled: src?.enabled ?? true,
   })
   noAuth.value = src?.password_ref === 'NO_AUTH'
@@ -178,6 +190,10 @@ async function handleSubmit() {
   if (!formData.name.trim() || !formData.host.trim() || !formData.password_ref.trim()) {
     Message.warning('名称、主机、凭据引用名必填'); return
   }
+  // 非阻断提醒：后端按 host/port 拼接能工作，但租户路径前缀场景必须手填完整 url
+  if (formData.type !== 'clickhouse' && !formData.url.trim()) {
+    Message.warning('victoria/prometheus 数据源建议填写完整查询地址（含租户路径前缀），否则将按 host/port 拼接')
+  }
   formLoading.value = true
   try {
     if (editingId.value) {
@@ -186,7 +202,7 @@ async function handleSubmit() {
         database_name: formData.database_name || null,
         username: formData.username || null,
         password_ref: formData.password_ref.trim(),
-        secure: formData.secure, enabled: formData.enabled,
+        secure: formData.secure, url: formData.url.trim() || null, enabled: formData.enabled,
       })
       Message.success('已更新')
     } else {
@@ -196,7 +212,7 @@ async function handleSubmit() {
         database_name: formData.database_name || null,
         username: formData.username || null,
         password_ref: formData.password_ref.trim(),
-        secure: formData.secure, enabled: formData.enabled,
+        secure: formData.secure, url: formData.url.trim() || null, enabled: formData.enabled,
       })
       Message.success('已注册')
     }
@@ -221,6 +237,7 @@ onMounted(fetchSources)
 .src-name { font-weight: 500; color: $text-primary; }
 .src-region { font-size: $font-size-xs; color: $text-secondary; }
 .endpoint { font-family: monospace; }
+.url-fallback { font-size: $font-size-xs; color: $text-secondary; }
 .cred-ref { font-family: monospace; }
 .cred-tip { font-size: $font-size-xs; color: $text-secondary; }
 </style>
