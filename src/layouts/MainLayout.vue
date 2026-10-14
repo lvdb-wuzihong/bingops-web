@@ -70,6 +70,7 @@
           <a-menu-item key="MonitoringSourceList">数据源管理</a-menu-item>
           <a-menu-item key="NotifyChannelList">通知渠道</a-menu-item>
           <a-menu-item key="AlertRuleList">告警规则</a-menu-item>
+          <a-menu-item key="AlertMuteList">告警屏蔽</a-menu-item>
         </a-sub-menu>
         <a-sub-menu key="Tickets">
           <template #icon><icon-file /></template>

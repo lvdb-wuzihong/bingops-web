@@ -289,3 +289,51 @@ export function updateNotifyChannel(id: number, data: INotifyChannelUpdate) {
 export function deleteNotifyChannel(id: number) {
   return request.delete<null>(`/api/v1/notify-channels/${id}`)
 }
+
+// ========== 告警屏蔽规则（v27：时间窗内命中的事件照落库，仅抑制通知） ==========
+
+export interface IAlertMute {
+  id: number
+  name: string
+  // 精确匹配规则 code；null = 屏蔽全部规则
+  rule_code: string | null
+  // 事件 labels 匹配器（事件 labels 须包含全部键值对）；空 = 不过滤标签
+  labels: Record<string, string>
+  starts_at: string
+  ends_at: string
+  note: string | null
+  enabled: boolean
+  created_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface IAlertMuteCreate {
+  name: string
+  rule_code?: string | null
+  labels?: Record<string, string>
+  starts_at: string
+  ends_at: string
+  note?: string | null
+  enabled?: boolean
+}
+
+// 部分更新；时间窗单端提供时后端与旧值合并后再校验 ends_at>starts_at
+export type IAlertMuteUpdate = Partial<IAlertMuteCreate>
+
+// 列表含已过期条目（便于回看历史），无分页
+export function getAlertMutes() {
+  return request.get<IAlertMute[]>('/api/v1/alerts/mutes')
+}
+
+export function createAlertMute(data: IAlertMuteCreate) {
+  return request.post<IAlertMute>('/api/v1/alerts/mutes', data)
+}
+
+export function updateAlertMute(id: number, data: IAlertMuteUpdate) {
+  return request.put<IAlertMute>(`/api/v1/alerts/mutes/${id}`, data)
+}
+
+export function deleteAlertMute(id: number) {
+  return request.delete<null>(`/api/v1/alerts/mutes/${id}`)
+}

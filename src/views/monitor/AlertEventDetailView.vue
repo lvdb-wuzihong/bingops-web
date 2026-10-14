@@ -5,7 +5,10 @@
         <a-button type="text" @click="goBack">
           <template #icon><icon-left /></template>返回{{ isLog ? '日志' : '指标' }}告警
         </a-button>
-        <a-button @click="fetchDetail"><template #icon><icon-refresh /></template></a-button>
+        <a-space>
+          <a-button v-if="canMute && detail" status="warning" @click="openMute"><template #icon><icon-notification /></template>屏蔽此告警</a-button>
+          <a-button @click="fetchDetail"><template #icon><icon-refresh /></template></a-button>
+        </a-space>
       </div>
 
       <a-spin :loading="loading" style="width: 100%">
@@ -82,19 +85,27 @@
         <a-empty v-else-if="!loading" description="事件不存在或无权访问" />
       </a-spin>
     </a-card>
+
+    <AlertMuteModal v-model:visible="muteVisible" :preset="mutePreset" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { IconLeft, IconRefresh } from '@arco-design/web-vue/es/icon'
+import { IconLeft, IconRefresh, IconNotification } from '@arco-design/web-vue/es/icon'
 import * as alertApi from '../../api/alert'
 import type { IAlertEvent } from '../../api/alert'
+import { useUserStore } from '../../stores/user'
+import AlertMuteModal from './components/AlertMuteModal.vue'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 const eventId = Number(route.params.id)
+const canMute = computed(() => userStore.hasPermission('alert_mute:create'))
+const muteVisible = ref(false)
+const mutePreset = ref<{ rule_code?: string | null; labels?: Record<string, string>; note?: string | null } | null>(null)
 
 const loading = ref(false)
 const detail = ref<IAlertEvent | null>(null)
@@ -116,9 +127,22 @@ const isLog = computed(() => detail.value?.rule_kind === 'log')
 
 async function fetchDetail() {
   loading.value = true
-  try { detail.value = (await alertApi.getAlertEvent(eventId)).data }
-  catch { detail.value = null } /* 拦截器已提示（404/403） */ finally { loading.value = false }
+  try {
+    detail.value = (await alertApi.getAlertEvent(eventId)).data
+    // 飞书卡片可带 ?action=mute 直达屏蔽表单（一行增强，非必须）
+    if (route.query.action === 'mute' && canMute.value) openMute()
+  } catch { detail.value = null } /* 拦截器已提示（404/403） */ finally { loading.value = false }
 }
+
+// 快捷屏蔽预填：rule_code 取当前事件、labels 预填关键标签（env/app/hostname/pod，用户可删减）、note 标来源事件
+function buildMutePreset() {
+  const d = detail.value
+  if (!d) return null
+  const pick: Record<string, string> = {}
+  for (const k of ['env', 'app', 'hostname', 'pod']) { const v = d.labels?.[k]; if (v) pick[k] = v }
+  return { rule_code: d.rule_code, labels: pick, note: `屏蔽来自事件 #${d.id}` }
+}
+function openMute() { mutePreset.value = buildMutePreset(); muteVisible.value = true }
 
 function goBack() { router.push({ name: isLog.value ? 'LogAlertList' : 'MetricAlertList' }) }
 function goTicket(id: number) { router.push({ name: 'TicketList', params: { id: String(id) } }) }

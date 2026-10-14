@@ -181,6 +181,12 @@ const routes: RouteRecordRaw[] = [
             component: () => import('../views/monitor/AlertRuleList.vue'),
             meta: { title: '告警规则' },
           },
+          {
+            path: 'mutes',
+            name: 'AlertMuteList',
+            component: () => import('../views/monitor/AlertMuteList.vue'),
+            meta: { title: '告警屏蔽' },
+          },
         ],
       },
       {
