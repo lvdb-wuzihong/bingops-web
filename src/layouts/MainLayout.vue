@@ -208,9 +208,15 @@ const userInitial = computed(() => {
 })
 
 const selectedKeys = computed(() => {
-  // 资源列表已收敛为资产总览的下钻页（不在菜单单列）：高亮归属「资产总览」，保持 CMDB 组展开
+  // 隐藏的下钻/详情页（不在菜单单列）高亮归属其列表菜单项，保持所属分组展开不致失焦
+  const alias: Record<string, string> = {
+    ResourceList: 'AssetOverview',      // 资源列表已收敛为资产总览的下钻页
+    AlertRuleEdit: 'AlertRuleList',     // 告警规则整页编辑
+    AppTopology: 'BusinessAppList',     // 应用关系视图整页
+    JobExecutionDetail: 'JobExecutionList',
+  }
   const name = route.name as string
-  return [name === 'ResourceList' ? 'AssetOverview' : name]
+  return [alias[name] || name]
 })
 
 const breadcrumbs = computed(() => {

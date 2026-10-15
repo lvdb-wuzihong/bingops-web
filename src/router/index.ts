@@ -182,6 +182,13 @@ const routes: RouteRecordRaw[] = [
             meta: { title: '告警规则' },
           },
           {
+            // 字段多且带 SQL 编辑器，弹窗装不下：整页编辑（:id 缺省 = 新增）
+            path: 'rules/edit/:id?',
+            name: 'AlertRuleEdit',
+            component: () => import('../views/monitor/AlertRuleEditView.vue'),
+            meta: { title: '告警规则编辑', hidden: true },
+          },
+          {
             path: 'mutes',
             name: 'AlertMuteList',
             component: () => import('../views/monitor/AlertMuteList.vue'),
