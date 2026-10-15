@@ -95,6 +95,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { IconLeft, IconRefresh, IconNotification } from '@arco-design/web-vue/es/icon'
 import * as alertApi from '../../api/alert'
+// 级别文案集中到 api 层（与规则页共用夜莺分级口径），别名保留模板里的旧名
+import { SEVERITY_MAP as severityMap } from '../../api/alert'
 import type { IAlertEvent } from '../../api/alert'
 import { useUserStore } from '../../stores/user'
 import AlertMuteModal from './components/AlertMuteModal.vue'
@@ -110,11 +112,6 @@ const mutePreset = ref<{ rule_code?: string | null; labels?: Record<string, stri
 const loading = ref(false)
 const detail = ref<IAlertEvent | null>(null)
 
-const severityMap: Record<number, { text: string; color: string }> = {
-  1: { text: '严重', color: 'red' },
-  2: { text: '中等', color: 'orange' },
-  3: { text: '轻微', color: 'arcoblue' },
-}
 const statusMap: Record<string, { text: string; color: string }> = {
   firing: { text: '触发中', color: 'red' },
   resolved: { text: '已恢复', color: 'green' },

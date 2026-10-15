@@ -121,15 +121,11 @@ import { BarChart, LineChart } from 'echarts/charts'
 import { TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import * as echarts from 'echarts/core'
 import * as alertApi from '../../api/alert'
+// 级别文案集中到 api 层（与规则页共用夜莺分级口径），别名保留模板里的旧名
+import { SEVERITY_MAP as severityMap } from '../../api/alert'
 import type { IAlertEvent, IAlertStatsSummary } from '../../api/alert'
 
 use([CanvasRenderer, BarChart, LineChart, TooltipComponent, LegendComponent, GridComponent])
-
-const severityMap: Record<number, { text: string; color: string }> = {
-  1: { text: '严重', color: 'red' },
-  2: { text: '中等', color: 'orange' },
-  3: { text: '轻微', color: 'arcoblue' },
-}
 
 const loading = ref(false)
 const events = ref<IAlertEvent[]>([])

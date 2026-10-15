@@ -8,6 +8,14 @@ export type AlertStatus = 'firing' | 'resolved' | 'error' | 'recorded'
 // 告警类型：log（日志/事件型，流水不合并）| metric（指标/状态型，firing 合并续命）；由后端按绑定数据源 type 推导
 export type AlertRuleKind = 'log' | 'metric'
 
+// 告警级别：值域对齐夜莺（1/2/3），文案采用夜莺分级口径，规则页与事件页共用一份，
+// text 用于表格/标签（短），full 用于表单选项（完整口径）
+export const SEVERITY_MAP: Record<number, { text: string; full: string; color: string }> = {
+  1: { text: '一级 Critical', full: '一级报警（Critical）', color: 'red' },
+  2: { text: '二级 Warning', full: '二级报警（Warning）', color: 'orange' },
+  3: { text: '三级 Info', full: '三级报警（Info）', color: 'arcoblue' },
+}
+
 export interface IAlertEvent {
   id: number
   source: string
