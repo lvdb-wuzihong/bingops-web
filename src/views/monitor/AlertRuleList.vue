@@ -29,7 +29,7 @@
           <span v-else class="no-source">未绑定</span>
         </template>
         <template #group="{ record }">{{ groupName(record.group_id) }}</template>
-        <template #stale="{ record }">{{ record.stale_minutes }} 分钟</template>
+        <template #stale="{ record }">{{ record.stale_minutes }}</template>
         <template #severity="{ record }">{{ severityMap[record.default_severity] || record.default_severity }}</template>
         <template #notify_enabled="{ record }">
           <a-tag size="small" :color="record.notify_enabled ? 'green' : 'gray'">{{ record.notify_enabled ? '开单' : '仅记录' }}</a-tag>
@@ -54,10 +54,10 @@
     <a-modal v-model:visible="formVisible" :title="editingId ? '编辑规则' : '新增规则'" :width="640" :ok-loading="formLoading" @ok="handleSubmit">
       <a-form :model="formData" layout="vertical">
         <!-- 夜莺退役后规则为平台原生：来源固定 bingops（过渡期历史数据在列表「告警来源」列区分） -->
-        <a-form-item field="code" label="规则 code" required>
-          <a-input v-model="formData.code" placeholder="规则唯一标识（事件聚合与统计的键）" :disabled="!!editingId" />
+        <a-form-item field="code" label="规则 code" required tooltip="这条规则的唯一英文名（如 prod_5xx_error）：告警事件按它归组、统计也按它汇总，必须与执行器侧保持一致；创建后不可改">
+          <a-input v-model="formData.code" placeholder="英文小写+下划线，如 prod_5xx_error" :disabled="!!editingId" />
         </a-form-item>
-        <a-form-item field="name" label="规则名称"><a-input v-model="formData.name" placeholder="可选，展示用" /></a-form-item>
+        <a-form-item field="name" label="规则名称"><a-input v-model="formData.name" placeholder="可选，列表里给人看的中文名" /></a-form-item>
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item field="group_id" label="开单处理组">
@@ -67,10 +67,10 @@
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item field="stale_minutes" label="恢复推导窗口（分钟）">
+            <a-form-item field="stale_minutes" label="恢复判定窗口（分钟）">
               <a-input-number v-model="formData.stale_minutes" :min="1" hide-button style="width: 100%" />
               <template #extra>
-                <span class="switch-tip">建议 2–3 × 窗口（分钟）</span>
+                <span class="switch-tip">多久没再收到这条规则的告警，就认为故障已自愈并自动恢复；建议设为扫描间隔的 2–3 倍，太小会因为执行器一次延迟就误报「已恢复」</span>
               </template>
             </a-form-item>
           </a-col>
@@ -102,7 +102,7 @@
             <a-option v-for="c in channels" :key="c.id" :value="c.id">{{ c.name }}（{{ c.type }}）</a-option>
           </a-select>
         </a-form-item>
-        <a-divider orientation="left">评估契约（执行器分发）</a-divider>
+        <a-divider orientation="left">评估配置（执行器按此巡检）</a-divider>
         <a-form-item field="source_id" label="绑定数据源">
           <a-select v-model="formData.source_id" placeholder="未绑定 = 仅事件记录（webhook-only 规则）" allow-clear>
             <a-option v-for="s in sources" :key="s.id" :value="s.id">{{ s.name }}（{{ s.type }}）</a-option>
@@ -115,32 +115,36 @@
         </a-form-item>
         <!-- 按数据源类型联动：clickhouse=SQL 契约；victoria/prometheus=PromQL（vector 非空即触发，阈值不参与）；未绑定=评估区折叠 -->
         <template v-if="formData.source_id">
-          <a-form-item field="eval_sql" :label="selectedSourceType === 'clickhouse' ? '评估 SQL（ClickHouse）' : 'PromQL 表达式'">
+          <a-form-item
+            field="eval_sql"
+            :label="selectedSourceType === 'clickhouse' ? '评估 SQL（ClickHouse）' : 'PromQL 表达式'"
+            :tooltip="selectedSourceType === 'clickhouse' ? '执行器每轮拿去问数据库的那句话：查出来的错误数达到下面「命中阈值」就算一次告警。SQL 需返回两列——错误数与日志明细，{window_minutes} 会被替换成下面的查询窗口' : '执行器每轮拿去问指标库的表达式：比较条件直接写在表达式里（如 up == 0），只要查回来有数据就算一次告警，所以下面阈值不生效'"
+          >
             <a-textarea v-model="formData.eval_sql" :placeholder="evalSqlPlaceholder" :auto-size="{ minRows: 3, maxRows: 8 }" />
           </a-form-item>
           <a-row :gutter="16">
             <a-col v-if="selectedSourceType === 'clickhouse'" :span="4">
-              <a-form-item field="threshold" label="阈值">
+              <a-form-item field="threshold" label="命中阈值" tooltip="查出来的错误数 ≥ 该值才算一次告警。填 1 = 出现一条日志就告；填 10 = 一轮里凑够 10 条才告，用来过滤零星噪音">
                 <a-input-number v-model="formData.threshold" :min="1" hide-button style="width: 100%" />
               </a-form-item>
             </a-col>
             <a-col :span="5">
-              <a-form-item field="interval_minutes" label="查询窗口(分钟)">
+              <a-form-item field="interval_minutes" label="查询窗口(分钟)" tooltip="每轮往回看多长时间的数据，即 SQL 里 {window_minutes} 的值。填 5 = 每次检查最近 5 分钟的日志；指标源请把窗口直接写进表达式（如 [5m]），此处不参与">
                 <a-input-number v-model="formData.interval_minutes" :min="1" hide-button style="width: 100%" />
               </a-form-item>
             </a-col>
             <a-col :span="5">
-              <a-form-item field="eval_interval_seconds" label="扫描间隔(秒)">
+              <a-form-item field="eval_interval_seconds" label="扫描间隔(秒)" tooltip="执行器多久跑一次这条规则。60 = 每分钟查一次，也是告警最多延迟多久被发现；调小更及时但会加大数据源压力（最小 10 秒）">
                 <a-input-number v-model="formData.eval_interval_seconds" :min="10" hide-button style="width: 100%" />
               </a-form-item>
             </a-col>
             <a-col :span="selectedSourceType === 'clickhouse' ? 5 : 6">
-              <a-form-item field="for_rounds" label="防抖轮次">
+              <a-form-item field="for_rounds" label="防抖轮次" tooltip="要连续多少轮都达标才真正报出告警。填 2 = 第一轮命中先记着不通知，第二轮仍命中才告；用来压掉偶发的单次抖动（填 1 = 一轮命中立刻告）">
                 <a-input-number v-model="formData.for_rounds" :min="1" hide-button style="width: 100%" />
               </a-form-item>
             </a-col>
             <a-col :span="selectedSourceType === 'clickhouse' ? 5 : 6">
-              <a-form-item field="detail_limit" label="明细上限">
+              <a-form-item field="detail_limit" label="明细上限" tooltip="一条告警里最多带回多少行现场日志/指标样本，用于飞书卡片展示与事后排查。太大撑爆卡片、查询也变慢，太小看不清现场；事件表始终按结构化存储">
                 <a-input-number v-model="formData.detail_limit" :min="1" hide-button style="width: 100%" />
               </a-form-item>
             </a-col>
@@ -153,7 +157,7 @@
         <a-form-item field="cardTemplateText" label="飞书卡片模板（JSON，可选）">
           <a-textarea v-model="formData.cardTemplateText" placeholder="可选；配置数据随分发下发给执行器，由执行器自行渲染发送" :auto-size="{ minRows: 3, maxRows: 10 }" />
         </a-form-item>
-        <a-form-item label="静态 labels（平台侧补齐，执行器未带时使用）">
+        <a-form-item label="静态 labels" tooltip="给这条规则固定补充的标签（如 env=prod）：事件本身没带时就按这里补齐，用来做环境/业务区分与告警屏蔽的匹配依据">
           <div class="label-editor">
             <div v-for="(row, idx) in labelRows" :key="idx" class="label-row">
               <a-input v-model="row.k" placeholder="key，如 env" />
@@ -224,7 +228,7 @@ const columns = [
   { title: '规则', slotName: 'rule', width: 220 },
   { title: '数据源', slotName: 'source_ref', width: 110 },
   { title: '处理组', slotName: 'group', width: 130 },
-  { title: '推导窗口', slotName: 'stale', width: 90 },
+  { title: '恢复判定(分)', slotName: 'stale', width: 100 },
   { title: '默认级别', slotName: 'severity', width: 80 },
   { title: '行为', slotName: 'notify_enabled', width: 80 },
   { title: '状态', slotName: 'enabled', width: 70 },
@@ -379,7 +383,7 @@ onMounted(() => {
 .rule-code { font-weight: 500; color: $text-primary; }
 .rule-name { font-size: $font-size-xs; color: $text-secondary; }
 .no-source { font-size: $font-size-xs; color: $text-disabled; }
-.switch-tip { font-size: $font-size-xs; color: $text-secondary; }
+.switch-tip { font-size: $font-size-xs; color: $text-hint; }
 .ch-name { font-size: $font-size-xs; color: $text-secondary; }
 .label-editor {
   display: flex; flex-direction: column; gap: $spacing-xs; width: 100%;
