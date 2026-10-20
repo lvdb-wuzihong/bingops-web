@@ -108,24 +108,24 @@
                       <a-input-number v-model="formData.threshold" :min="1" hide-button style="width: 100%" />
                     </a-form-item>
                   </a-col>
-                  <a-col :span="isLogRule ? 5 : 6">
+                  <a-col :span="isLogRule ? 4 : 6">
                     <a-form-item field="eval_interval_seconds" label="执行频率(秒)" tooltip="执行器多久跑一次这条规则（夜莺同款「执行频率」）。60 = 每分钟查一次，也决定告警最多延迟多久被发现；调小更及时但会加大数据源压力（最小 10 秒）">
                       <a-input-number v-model="formData.eval_interval_seconds" :min="10" hide-button style="width: 100%" />
                     </a-form-item>
                   </a-col>
-                  <a-col :span="6">
+                  <a-col :span="isLogRule ? 4 : 6">
                     <a-form-item field="persist_seconds" label="持续时长(秒)" tooltip="要连续超标多久才真正报警（夜莺同款「持续时长」）。填 120 = 持续 2 分钟仍超标才通知，用来压掉偶发抖动；填 0 = 一轮命中就告。执行器按轮计数，所以实际时长按执行频率向上取整到整轮（见下方「实际生效」）">
                       <a-input-number v-model="formData.persist_seconds" :min="0" hide-button style="width: 100%" />
                     </a-form-item>
                   </a-col>
-                  <a-col :span="isLogRule ? 5 : 6">
+                  <a-col :span="isLogRule ? 4 : 6">
                     <a-form-item field="detail_limit" label="明细条数上限" tooltip="一条告警里最多带回多少行现场日志/指标样本，用于飞书卡片展示与事后排查。太大撑爆卡片、查询也变慢，太小看不清现场；事件表始终按结构化存储">
                       <a-input-number v-model="formData.detail_limit" :min="1" hide-button style="width: 100%" />
                     </a-form-item>
                   </a-col>
-                  <!-- 重复提醒只对指标告警有意义（firing 会合并续命）；日志流水每轮独立直发 -->
-                  <a-col v-if="!isLogRule" :span="6">
-                    <a-form-item field="repeat_notify_minutes" label="重复提醒(分钟)" tooltip="告警一直不恢复时，每隔多久再提醒一次（夜莺 repeat notify 同款），防遗忘。默认 1 分钟；一旦有人在事件详情页「认领」，重复提醒自动静默（事件照常续命），直到恢复或放手">
+                  <!-- 两种规则都受此字段：指标告警由平台按它判重发，日志告警平台每轮都提醒、实际频率靠执行器兜底限流 -->
+                  <a-col :span="isLogRule ? 4 : 6">
+                    <a-form-item field="repeat_notify_minutes" label="重复提醒(分钟)" :tooltip="isLogRule ? '告警一直不命中时不需要提醒；持续命中时实际每分钟就会来一轮。平台对日志流水不做重复判定（每轮都是新事件，照常返回提醒），此值随配置下发给执行器，但按设计文档执行器不读该数值——日志告警的实际频率受执行器侧 15 分钟兜底限流约束' : '告警一直不恢复时，每隔多久再提醒一次（夜莺 repeat notify 同款），防遗忘。默认 1 分钟；一旦有人在事件详情页「认领」，重复提醒自动静默（事件照常续命），直到恢复或放手'">
                       <a-input-number v-model="formData.repeat_notify_minutes" :min="1" hide-button style="width: 100%" />
                     </a-form-item>
                   </a-col>
@@ -253,7 +253,7 @@ const effectiveSeconds = computed(() => effectiveRounds.value * (formData.eval_i
 const effectiveSummary = computed(() => {
   const parts = [`每 ${formData.eval_interval_seconds} 秒查一次`, `连续 ${effectiveSeconds.value} 秒（${effectiveRounds.value} 轮）超标才报警`]
   if (isLogRule.value) {
-    parts.push(`每轮回看最近 ${formData.interval_minutes} 分钟，每轮命中直发不节流`)
+    parts.push(`每轮回看最近 ${formData.interval_minutes} 分钟（重复提醒此项不控频率：日志每轮命中都会提醒，实际受执行器兜底限流）`)
   } else {
     parts.push('回看窗口由表达式自身决定', `未恢复则每 ${formData.repeat_notify_minutes} 分钟重复提醒（认领后静默）`)
   }
@@ -302,7 +302,7 @@ const TERM_GUIDE: Array<{ name: string; field: string; desc: string; where: stri
   {
     name: '重复通知间隔', field: 'repeat_notify_minutes', editable: true,
     desc: '告警一直不恢复时，每隔多久再提醒一次（夜莺 repeat notify 同款），防遗忘。默认 1 分钟；太小会变成刷屏，太大容易遗忘。',
-    where: '本页可配（分钟，仅指标告警）；日志流水每轮直发不读此字段。一旦在事件详情页「认领」，重复提醒自动静默（事件照常续命）',
+    where: '两种规则都可填（分钟）：指标告警由平台按它判重发，默认 1 分钟，认领后静默；日志告警平台不做重复判定（每轮都是新事件），实际频率受执行器侧 15 分钟兜底限流',
   },
   {
     name: '最大发送次数', field: '无对应字段', editable: false,
