@@ -73,6 +73,11 @@
         <template #severity="{ record }">
           <a-tag size="small" :color="severityMap[record.severity]?.color || 'gray'">{{ severityMap[record.severity]?.text || record.severity }}</a-tag>
         </template>
+        <!-- 流水无认领语义（仅活跃 firing 可认），但同样可标处置结论供准确率统计 -->
+        <template #verdict="{ record }">
+          <a-tag v-if="record.verdict" size="small" :color="VERDICT_MAP[record.verdict]?.color || 'gray'">{{ VERDICT_MAP[record.verdict]?.text || record.verdict }}</a-tag>
+          <span v-else class="muted">-</span>
+        </template>
         <template #status="{ record }">
           <a-tooltip v-if="record.status === 'error'" :content="record.error || '评估失败'">
             <a-tag size="small" color="orange">回报异常</a-tag>
@@ -122,7 +127,7 @@ import { TooltipComponent, LegendComponent, GridComponent } from 'echarts/compon
 import * as echarts from 'echarts/core'
 import * as alertApi from '../../api/alert'
 // 级别文案集中到 api 层（与规则页共用夜莺分级口径），别名保留模板里的旧名
-import { SEVERITY_MAP as severityMap } from '../../api/alert'
+import { SEVERITY_MAP as severityMap, VERDICT_MAP } from '../../api/alert'
 import type { IAlertEvent, IAlertStatsSummary } from '../../api/alert'
 
 use([CanvasRenderer, BarChart, LineChart, TooltipComponent, LegendComponent, GridComponent])
@@ -139,6 +144,7 @@ const pagination = reactive({ current: 1, pageSize: 20, total: 0, showTotal: tru
 const columns = [
   { title: '级别', slotName: 'severity', width: 70 },
   { title: '状态', slotName: 'status', width: 88 },
+  { title: '结论', slotName: 'verdict', width: 76 },
   { title: '来源', dataIndex: 'source', width: 110 },
   { title: '规则', slotName: 'rule', width: 190 },
   { title: '时间', slotName: 'first_seen', width: 150 },
@@ -300,5 +306,6 @@ onBeforeUnmount(() => {
 
 .rule-code { font-weight: 500; color: $text-primary; }
 .rule-name { font-size: $font-size-xs; color: $text-secondary; }
+.muted { font-size: $font-size-xs; color: $text-disabled; }
 .details-cell { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 </style>

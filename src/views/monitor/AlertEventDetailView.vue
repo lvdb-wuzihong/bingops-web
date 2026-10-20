@@ -6,6 +6,25 @@
           <template #icon><icon-left /></template>返回{{ isLog ? '日志' : '指标' }}告警
         </a-button>
         <a-space>
+          <!-- v29 轻闭环：认领=“有人在管了”，仅活跃 firing 可认；本人或超管可放手 -->
+          <a-button v-if="canClaim && detail && detail.status === 'firing' && !detail.claimed_by" type="primary" status="warning" :loading="claiming" @click="handleClaim">
+            <template #icon><icon-user /></template>认领
+          </a-button>
+          <a-button v-if="canClaim && detail && canRelease" status="normal" :loading="claiming" @click="handleRelease">
+            <template #icon><icon-user />
+            </template>放手
+          </a-button>
+          <a-dropdown v-if="canClaim && detail" trigger="click" @select="onVerdictSelect">
+            <a-button>
+              处置结论：<b v-if="detail.verdict">{{ VERDICT_MAP[detail.verdict]?.text || detail.verdict }}</b><b v-else class="unmarked">未标注</b>
+              <template #icon><icon-down /></template>
+            </a-button>
+            <template #content>
+              <a-doption v-for="(m, k) in VERDICT_MAP" :key="k" :value="k">
+                {{ m.text }}<span v-if="detail.verdict === k" class="hint">（当前）</span>
+              </a-doption>
+            </template>
+          </a-dropdown>
           <a-button v-if="canMute && detail" status="warning" @click="openMute"><template #icon><icon-notification /></template>屏蔽此告警</a-button>
           <a-button @click="fetchDetail"><template #icon><icon-refresh /></template></a-button>
         </a-space>
@@ -40,6 +59,16 @@
               <span v-else>-</span>
             </a-descriptions-item>
             <a-descriptions-item label="处理组">{{ detail.group_id ? '#' + detail.group_id : '-' }}</a-descriptions-item>
+            <!-- v29：认领是 MTTA 起点，处置结论是告警准确率的统计原料 -->
+            <a-descriptions-item label="认领">
+              <span v-if="detail.claimed_by">{{ userName(detail.claimed_by) }}<span class="hint">（{{ fmtTime(detail.claimed_at) }}）</span></span>
+              <span v-else class="hint">无人认领</span>
+            </a-descriptions-item>
+            <a-descriptions-item label="处置结论">
+              <a-tag v-if="detail.verdict" size="small" :color="VERDICT_MAP[detail.verdict]?.color || 'gray'">{{ VERDICT_MAP[detail.verdict]?.text || detail.verdict }}</a-tag>
+              <span v-else class="hint">未标注</span>
+              <span v-if="detail.status === 'firing' && !detail.claimed_by" class="hint">· 持续告警会按规则间隔重复提醒，认领后静默</span>
+            </a-descriptions-item>
             <a-descriptions-item label="关联工单">
               <a-link v-if="detail.ticket_id" @click="goTicket(detail.ticket_id)">#{{ detail.ticket_id }}</a-link>
               <span v-else>-</span>
@@ -93,11 +122,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { IconLeft, IconRefresh, IconNotification } from '@arco-design/web-vue/es/icon'
+import { Message } from '@arco-design/web-vue'
+import { IconLeft, IconRefresh, IconNotification, IconUser, IconDown } from '@arco-design/web-vue/es/icon'
 import * as alertApi from '../../api/alert'
-// 级别文案集中到 api 层（与规则页共用夜莺分级口径），别名保留模板里的旧名
-import { SEVERITY_MAP as severityMap } from '../../api/alert'
+// 级别与处置结论文案集中到 api 层（与规则页共用），别名保留模板里的旧名
+import { SEVERITY_MAP as severityMap, VERDICT_MAP } from '../../api/alert'
 import type { IAlertEvent } from '../../api/alert'
+import { useUserNames } from '../../composables/useUserNames'
 import { useUserStore } from '../../stores/user'
 import AlertMuteModal from './components/AlertMuteModal.vue'
 
@@ -106,6 +137,50 @@ const router = useRouter()
 const userStore = useUserStore()
 const eventId = Number(route.params.id)
 const canMute = computed(() => userStore.hasPermission('alert_mute:create'))
+// v29 认领与标注统一权限码 alert:claim（无权限隐藏入口，后端 403 兜底）
+const canClaim = computed(() => userStore.hasPermission('alert:claim'))
+const myId = computed(() => userStore.currentUser?.id ?? null)
+const isSuperuser = computed(() => userStore.currentUser?.is_superuser ?? false)
+// 只有认领本人或超管可放手（后端同样校验，此处提前隐钮避免注定失败的点击）
+const canRelease = computed(() => {
+  const c = detail.value?.claimed_by
+  return !!c && (c === myId.value || isSuperuser.value)
+})
+const claiming = ref(false)
+// 认领人 id → 姓名（后端响应只给 id）
+const { userName, ensureUserNames } = useUserNames()
+
+async function handleClaim() {
+  claiming.value = true
+  try {
+    detail.value = (await alertApi.claimAlertEvent(eventId)).data
+    Message.success('已认领，重复提醒已静默')
+    await ensureUserNames([detail.value?.claimed_by])
+  } catch { /* 拦截器已提示（他人已认领 409 / 非 firing 400） */ } finally { claiming.value = false }
+}
+
+async function handleRelease() {
+  claiming.value = true
+  try {
+    detail.value = (await alertApi.releaseAlertEvent(eventId)).data
+    Message.success('已放手，恢复后重新进入重复提醒节奏')
+  } catch { /* 拦截器已提示（非本人 403） */ } finally { claiming.value = false }
+}
+
+async function handleVerdict(verdict: VerdictKind) {
+  if (detail.value?.verdict === verdict) return
+  try {
+    detail.value = (await alertApi.setAlertEventVerdict(eventId, verdict)).data
+    Message.success('处置结论已标注')
+  } catch { /* 拦截器已提示 */ }
+}
+
+// a-dropdown @select 回调值形态不定，收敛到结论值域
+type VerdictKind = 'valid' | 'false_positive' | 'duplicate'
+
+function onVerdictSelect(v: unknown) {
+  if (typeof v === 'string' && v in VERDICT_MAP) handleVerdict(v as VerdictKind)
+}
 const muteVisible = ref(false)
 const mutePreset = ref<{ rule_code?: string | null; labels?: Record<string, string>; note?: string | null } | null>(null)
 
@@ -126,6 +201,7 @@ async function fetchDetail() {
   loading.value = true
   try {
     detail.value = (await alertApi.getAlertEvent(eventId)).data
+    await ensureUserNames([detail.value?.claimed_by])
     // 飞书卡片可带 ?action=mute 直达屏蔽表单（一行增强，非必须）
     if (route.query.action === 'mute' && canMute.value) openMute()
   } catch { detail.value = null } /* 拦截器已提示（404/403） */ finally { loading.value = false }
@@ -212,6 +288,7 @@ onMounted(fetchDetail)
 .mono-text { font-family: $font-mono; color: $color-primary; }
 .mono { font-family: $font-mono; }
 .hint { font-size: $font-size-xs; color: $text-hint; }
+.unmarked { color: $text-hint; font-weight: 400; }
 .live-text { color: $color-danger; }
 
 .sec { margin-bottom: $spacing-md; }

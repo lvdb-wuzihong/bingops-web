@@ -16,6 +16,13 @@ export const SEVERITY_MAP: Record<number, { text: string; full: string; color: s
   3: { text: '三级 Info', full: '三级报警（Info）', color: 'arcoblue' },
 }
 
+// 处置结论（v29）：告警准确率的统计原料，准确率 = valid / 已标注总数；resolved 后可复盘补标，重复标注覆盖
+export const VERDICT_MAP: Record<string, { text: string; color: string }> = {
+  valid: { text: '有效', color: 'green' },
+  false_positive: { text: '误报', color: 'gray' },
+  duplicate: { text: '重复', color: 'purple' },
+}
+
 export interface IAlertEvent {
   id: number
   source: string
@@ -45,6 +52,13 @@ export interface IAlertEvent {
   // 首次 firing 自动开的工单
   ticket_id: number | null
   group_id: number | null
+  // ── 认领与处置标注（v29）──
+  // 认领人 users.id（仅活跃 firing 可认领；响应只给 id，姓名由前端映射）
+  claimed_by: number | null
+  // MTTA 起点（最早人工动作：有工单取工单首响，只有认领取此值）
+  claimed_at: string | null
+  // valid | false_positive | duplicate；未标注为 null
+  verdict: string | null
   created_at: string
   updated_at: string
 }
@@ -65,6 +79,23 @@ export function getAlertEvents(params?: IAlertEventQuery) {
 // 单事件详情（飞书卡片「事件详情」按钮落地：{frontend_base_url}/alerts/events/{event_id}）
 export function getAlertEvent(id: number) {
   return request.get<IAlertEvent>(`/api/v1/alerts/events/${id}`)
+}
+
+// ========== 认领与处置标注（v29，权限码 alert:claim） ==========
+
+// 认领活跃 firing（本人重复认领幂等；他人已认领 409；非 firing 400）
+export function claimAlertEvent(id: number) {
+  return request.post<IAlertEvent>(`/api/v1/alerts/events/${id}/claim`)
+}
+
+// 放弃认领（未认领幂等；仅认领本人或超管可放）
+export function releaseAlertEvent(id: number) {
+  return request.post<IAlertEvent>(`/api/v1/alerts/events/${id}/release`)
+}
+
+// 标注处置结论（任意状态可标，重复标注覆盖）
+export function setAlertEventVerdict(id: number, verdict: 'valid' | 'false_positive' | 'duplicate') {
+  return request.post<IAlertEvent>(`/api/v1/alerts/events/${id}/verdict`, { verdict })
 }
 
 // ========== 统计 ==========
@@ -118,6 +149,8 @@ export interface IAlertRule {
   eval_interval_seconds: number
   // 连续 M 轮达标才报 firing（防抖）
   for_rounds: number
+  // 活跃指标告警的重复提醒间隔（分钟，v28 起规则级可配）；日志告警每轮直发不读本字段
+  repeat_notify_minutes: number
   detail_limit: number
   grafana_url: string | null
   feishu_card_template: Record<string, unknown> | null
@@ -142,6 +175,7 @@ export interface IAlertRuleCreate {
   interval_minutes?: number
   eval_interval_seconds?: number
   for_rounds?: number
+  repeat_notify_minutes?: number
   detail_limit?: number
   grafana_url?: string | null
   feishu_card_template?: Record<string, unknown> | null
@@ -162,6 +196,7 @@ export interface IAlertRuleUpdate {
   interval_minutes?: number | null
   eval_interval_seconds?: number | null
   for_rounds?: number | null
+  repeat_notify_minutes?: number | null
   detail_limit?: number | null
   grafana_url?: string | null
   feishu_card_template?: Record<string, unknown> | null

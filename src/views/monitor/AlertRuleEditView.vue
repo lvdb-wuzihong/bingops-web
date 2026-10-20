@@ -108,19 +108,25 @@
                       <a-input-number v-model="formData.threshold" :min="1" hide-button style="width: 100%" />
                     </a-form-item>
                   </a-col>
-                  <a-col :span="isLogRule ? 5 : 8">
+                  <a-col :span="isLogRule ? 5 : 6">
                     <a-form-item field="eval_interval_seconds" label="执行频率(秒)" tooltip="执行器多久跑一次这条规则（夜莺同款「执行频率」）。60 = 每分钟查一次，也决定告警最多延迟多久被发现；调小更及时但会加大数据源压力（最小 10 秒）">
                       <a-input-number v-model="formData.eval_interval_seconds" :min="10" hide-button style="width: 100%" />
                     </a-form-item>
                   </a-col>
-                  <a-col :span="isLogRule ? 6 : 8">
+                  <a-col :span="6">
                     <a-form-item field="persist_seconds" label="持续时长(秒)" tooltip="要连续超标多久才真正报警（夜莺同款「持续时长」）。填 120 = 持续 2 分钟仍超标才通知，用来压掉偶发抖动；填 0 = 一轮命中就告。执行器按轮计数，所以实际时长按执行频率向上取整到整轮（见下方「实际生效」）">
                       <a-input-number v-model="formData.persist_seconds" :min="0" hide-button style="width: 100%" />
                     </a-form-item>
                   </a-col>
-                  <a-col :span="isLogRule ? 5 : 8">
+                  <a-col :span="isLogRule ? 5 : 6">
                     <a-form-item field="detail_limit" label="明细条数上限" tooltip="一条告警里最多带回多少行现场日志/指标样本，用于飞书卡片展示与事后排查。太大撑爆卡片、查询也变慢，太小看不清现场；事件表始终按结构化存储">
                       <a-input-number v-model="formData.detail_limit" :min="1" hide-button style="width: 100%" />
+                    </a-form-item>
+                  </a-col>
+                  <!-- 重复提醒只对指标告警有意义（firing 会合并续命）；日志流水每轮独立直发 -->
+                  <a-col v-if="!isLogRule" :span="6">
+                    <a-form-item field="repeat_notify_minutes" label="重复提醒(分钟)" tooltip="告警一直不恢复时，每隔多久再提醒一次（夜莺 repeat notify 同款），防遗忘。默认 1 分钟；一旦有人在事件详情页「认领」，重复提醒自动静默（事件照常续命），直到恢复或放手">
+                      <a-input-number v-model="formData.repeat_notify_minutes" :min="1" hide-button style="width: 100%" />
                     </a-form-item>
                   </a-col>
                 </a-row>
@@ -219,6 +225,8 @@ const formData = reactive({
   threshold: 1, interval_minutes: 1, eval_interval_seconds: 60, detail_limit: 10,
   // 持续时长（秒）：UI 输入量，提交时换算为 for_rounds
   persist_seconds: 60,
+  // 指标告警未恢复时的重复提醒间隔（分钟）；日志规则不读此字段
+  repeat_notify_minutes: 1,
   grafana_url: '', cardTemplateText: '',
 })
 const labelRows = ref<Array<{ k: string; v: string }>>([])
@@ -244,7 +252,11 @@ const effectiveRounds = computed(() => {
 const effectiveSeconds = computed(() => effectiveRounds.value * (formData.eval_interval_seconds || 60))
 const effectiveSummary = computed(() => {
   const parts = [`每 ${formData.eval_interval_seconds} 秒查一次`, `连续 ${effectiveSeconds.value} 秒（${effectiveRounds.value} 轮）超标才报警`]
-  parts.push(isLogRule.value ? `每轮回看最近 ${formData.interval_minutes} 分钟` : '回看窗口由表达式自身决定')
+  if (isLogRule.value) {
+    parts.push(`每轮回看最近 ${formData.interval_minutes} 分钟，每轮命中直发不节流`)
+  } else {
+    parts.push('回看窗口由表达式自身决定', `未恢复则每 ${formData.repeat_notify_minutes} 分钟重复提醒（认领后静默）`)
+  }
   return `实际生效：${parts.join('，')}`
 })
 
@@ -288,9 +300,9 @@ const TERM_GUIDE: Array<{ name: string; field: string; desc: string; where: stri
     where: '本平台无此开关——同类防抖由「恢复判定窗口」承担（方向相反：它是“还要等多久才算恢复”）',
   },
   {
-    name: '重复通知间隔', field: 'repeat_after_minutes（平台常量）', editable: false,
-    desc: '告警一直不恢复时，每隔多久再提醒一次，避免要么石沉大海要么刷屏。',
-    where: '不可配：平台在每次 webhook 响应里固定下发 1 分钟；执行器另有 15 分钟限流兜底（仅平台不可用时生效）。要改需后端提常量',
+    name: '重复通知间隔', field: 'repeat_notify_minutes', editable: true,
+    desc: '告警一直不恢复时，每隔多久再提醒一次（夜莺 repeat notify 同款），防遗忘。默认 1 分钟；太小会变成刷屏，太大容易遗忘。',
+    where: '本页可配（分钟，仅指标告警）；日志流水每轮直发不读此字段。一旦在事件详情页「认领」，重复提醒自动静默（事件照常续命）',
   },
   {
     name: '最大发送次数', field: '无对应字段', editable: false,
@@ -317,6 +329,7 @@ function fillFromRule(rule: IAlertRule) {
     // 后端只存轮次，回显乘回秒数供用户按时间理解
     persist_seconds: rule.for_rounds * rule.eval_interval_seconds,
     detail_limit: rule.detail_limit,
+    repeat_notify_minutes: rule.repeat_notify_minutes ?? 1,
     grafana_url: rule.grafana_url ?? '',
     cardTemplateText: rule.feishu_card_template ? JSON.stringify(rule.feishu_card_template, null, 2) : '',
   })
@@ -358,6 +371,7 @@ async function handleSave() {
     eval_interval_seconds: formData.eval_interval_seconds,
     for_rounds: effectiveRounds.value,
     detail_limit: formData.detail_limit,
+    repeat_notify_minutes: formData.repeat_notify_minutes,
     grafana_url: formData.grafana_url || null,
     feishu_card_template: cardTemplate,
   }

@@ -87,6 +87,15 @@
             <a-tag size="small" :color="statusMap[record.status]?.color || 'gray'">{{ statusMap[record.status]?.text || record.status }}</a-tag>
           </a-tooltip>
         </template>
+        <template #handle_state="{ record }">
+          <a-space wrap size="mini">
+            <a-tooltip v-if="record.claimed_by" content="已认领（重复提醒已静默）">
+              <a-tag size="small" color="orange">{{ userName(record.claimed_by) }}</a-tag>
+            </a-tooltip>
+            <a-tag v-if="record.verdict" size="small" :color="VERDICT_MAP[record.verdict]?.color || 'gray'">{{ VERDICT_MAP[record.verdict]?.text || record.verdict }}</a-tag>
+            <span v-if="!record.claimed_by && !record.verdict" class="muted">-</span>
+          </a-space>
+        </template>
         <template #rule="{ record }">
           <span class="rule-code">{{ record.rule_code }}</span>
           <div v-if="record.rule_name" class="rule-name">{{ record.rule_name }}</div>
@@ -139,8 +148,9 @@ import { TooltipComponent, LegendComponent, GridComponent } from 'echarts/compon
 import * as echarts from 'echarts/core'
 import * as alertApi from '../../api/alert'
 // 级别文案集中到 api 层（与规则页共用夜莺分级口径），别名保留模板里的旧名
-import { SEVERITY_MAP as severityMap } from '../../api/alert'
+import { SEVERITY_MAP as severityMap, VERDICT_MAP } from '../../api/alert'
 import type { IAlertEvent, IAlertStatsSummary } from '../../api/alert'
+import { useUserNames } from '../../composables/useUserNames'
 
 use([CanvasRenderer, BarChart, PieChart, TooltipComponent, LegendComponent, GridComponent])
 
@@ -152,6 +162,9 @@ const statusMap: Record<string, { text: string; color: string }> = {
   error: { text: '回报异常', color: 'orange' },
 }
 
+// 认领人 id → 姓名（列表只给 id）
+const { userName, ensureUserNames } = useUserNames()
+
 const loading = ref(false)
 const events = ref<IAlertEvent[]>([])
 const summary = ref<IAlertStatsSummary | null>(null)
@@ -162,6 +175,7 @@ const pagination = reactive({ current: 1, pageSize: 20, total: 0, showTotal: tru
 const columns = [
   { title: '级别', slotName: 'severity', width: 70 },
   { title: '状态', slotName: 'status', width: 88 },
+  { title: '处置', slotName: 'handle_state', width: 130 },
   { title: '来源', dataIndex: 'source', width: 110 },
   { title: '规则', slotName: 'rule', width: 190 },
   { title: '首次触发', slotName: 'first_seen', width: 150 },
@@ -201,6 +215,8 @@ async function fetchEvents() {
     })
     events.value = res.data.items
     pagination.total = res.data.pagination.total
+    // 有认领人才拉用户表，无认领场景零额外请求
+    await ensureUserNames(events.value.map(e => e.claimed_by))
   } catch { /* 拦截器已提示 */ } finally { loading.value = false }
 }
 
@@ -357,6 +373,7 @@ onBeforeUnmount(() => {
 
 .rule-code { font-weight: 500; color: $text-primary; }
 .rule-name { font-size: $font-size-xs; color: $text-secondary; }
+.muted { font-size: $font-size-xs; color: $text-disabled; }
 .live-text { color: $color-danger; }
 .ticket-id { color: $color-primary; }
 .details-cell { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
