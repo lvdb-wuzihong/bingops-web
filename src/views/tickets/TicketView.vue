@@ -230,6 +230,14 @@
             提交评论
           </a-button>
         </div>
+
+        <!-- 附件（v38：OSS 私有桶，平台代理下载；终态只读） -->
+        <TicketAttachments
+          :ticket-id="detail.id"
+          :attachments="detail.attachments || []"
+          :status="detail.status"
+          @changed="onAttachmentsChanged"
+        />
       </div>
     </a-drawer>
 
@@ -379,6 +387,7 @@ import type { IUser } from '../../types/user'
 import { getApps } from '../../api/app'
 import type { IBusinessApp } from '../../api/app'
 import { useUserStore } from '../../stores/user'
+import TicketAttachments from './components/TicketAttachments.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -574,29 +583,38 @@ async function handleSubmit() {
   const errors = await formRef.value?.validate()
   if (errors) return
   formLoading.value = true
+  let createdId: number | null = null
   try {
     if (editingId.value) {
       await ticketApi.updateTicket(editingId.value, {
         title: formData.title, priority: formData.priority, description: formData.description || null,
       })
     } else {
-      await ticketApi.createTicket({
+      const created = (await ticketApi.createTicket({
         title: formData.title, ticket_type: formData.ticket_type, priority: formData.priority,
         catalog_item_id: formData.catalog_item_id ?? null,
         business_app_id: formData.business_app_id ?? null,
         description: formData.description || null,
-      })
+      })).data
+      createdId = created.id
     }
-    Message.success(editingId.value ? '编辑成功' : '创建成功')
+    Message.success(editingId.value ? '编辑成功' : '创建成功，可在详情中上传附件')
     formVisible.value = false
     fetchData()
-    if (detailVisible.value && editingId.value) openDetail(editingId.value)
+    // 附件依赖 ticket_id（v38）：建单后直接开详情，不用用户再去找入口
+    if (createdId) openDetail(createdId)
+    else if (detailVisible.value && editingId.value) openDetail(editingId.value)
   } catch { Message.error('操作失败') } finally { formLoading.value = false }
 }
 
 // ========== 详情 ==========
 const detailVisible = ref(false)
 const detail = ref<ITicketDetail | null>(null)
+
+// 附件增删后同步列表到详情（子组件不会重复请求，只回传服务端新列表）
+function onAttachmentsChanged(list: ITicketDetail['attachments']) {
+  if (detail.value) detail.value = { ...detail.value, attachments: list }
+}
 
 async function openDetail(id: number) {
   detailVisible.value = true

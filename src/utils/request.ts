@@ -33,6 +33,11 @@ service.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    // FormData（附件上传等）：必须去掉默认的 application/json，否则 axios 1.x 的
+    // transformRequest 会把 FormData 序列化成 JSON；移除后浏览器自动带 multipart 边界
+    if (config.data instanceof FormData) {
+      config.headers.delete('Content-Type')
+    }
     return config
   },
   (error) => {
@@ -67,6 +72,8 @@ function auth401Message(error: { response?: { data?: { message?: string } } }): 
 service.interceptors.response.use(
   (response: AxiosResponse<IApiResponse>) => {
     const { data } = response
+    // 二进制响应（附件下载等 responseType=blob）不走统一信封校验：Blob 上没有 code 字段
+    if (data instanceof Blob || data instanceof ArrayBuffer) return response
     if (data.code !== 0) {
       Message.error(data.message || '请求失败')
       return Promise.reject(new Error(data.message || '请求失败'))
@@ -165,6 +172,11 @@ const request = {
   },
   delete<T>(url: string, config?: AxiosRequestConfig): Promise<IApiResponse<T>> {
     return service.delete(url, config).then((res) => res.data)
+  },
+  // 二进制下载（附件等）：后端直接返回字节流，不包统一信封
+  async download(url: string, config?: AxiosRequestConfig): Promise<Blob> {
+    const res = await service.get(url, { ...config, responseType: 'blob' })
+    return res.data as Blob
   },
 }
 

@@ -56,7 +56,37 @@ export interface ITicketDetail extends ITicket {
   comments: ITicketComment[]
   approvals: IApproval[]
   job_execution: IJobExecutionSummary | null
+  // v38：详情响应已内嵌附件数组，无需再单独拉列表
+  attachments: ITicketAttachment[]
 }
+
+// ========== 工单附件（v38：OSS 私有桶，平台代理下载） ==========
+
+export interface ITicketAttachment {
+  id: number
+  ticket_id: number
+  filename: string
+  size: number
+  content_type: string | null
+  uploaded_by: number
+  uploader_name: string | null
+  // 平台代理下载地址（不暴露 OSS 签名 URL）
+  download_url: string
+  created_at: string
+}
+
+// 扩展名白名单与单文件上限对齐后端 ticket_attachment_service.ALLOWED_EXTENSIONS /
+// BINGOPS_TICKET_ATTACHMENT_MAX_MB 默认值；后端仍会二次校验（放宽时以 422 消息为准）
+export const ATTACHMENT_ALLOWED_EXT = [
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp',
+  'txt', 'log', 'json', 'csv', 'md', 'yaml', 'yml', 'sql',
+  'pdf', 'zip', 'gz', 'tgz', 'tar',
+] as const
+export const ATTACHMENT_MAX_MB = 20
+export const ATTACHMENT_ACCEPT = ATTACHMENT_ALLOWED_EXT.map(e => `.${e}`).join(',')
+
+// 可增删附件的工单状态（终态只读，后端同样限制）
+export const ATTACHMENT_EDITABLE_STATUSES = ['open', 'pending_approval', 'in_progress']
 
 export interface IApproval {
   id: number
@@ -180,6 +210,30 @@ export function getTicketComments(id: number) {
 
 export function addTicketComment(id: number, content: string) {
   return request.post<ITicketComment>(`/api/v1/tickets/${id}/comments`, { content })
+}
+
+// ========== 附件（v38） ==========
+
+// 附件列表（详情响应已内嵌 attachments，此接口用于单独刷新）
+export function getTicketAttachments(ticketId: number) {
+  return request.get<ITicketAttachment[]>(`/api/v1/tickets/${ticketId}/attachments`)
+}
+
+// 上传：multipart/form-data，字段名固定为 file（不要手动设 Content-Type，交给浏览器带边界）
+export function uploadTicketAttachment(ticketId: number, file: File) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return request.post<ITicketAttachment>(`/api/v1/tickets/${ticketId}/attachments`, fd)
+}
+
+export function deleteTicketAttachment(ticketId: number, attachmentId: number) {
+  return request.delete<null>(`/api/v1/tickets/${ticketId}/attachments/${attachmentId}`)
+}
+
+// 下载：平台代理端点需 Authorization 头，不能用 <a href> 直链（会 401），必须以 blob 取回后本地保存
+// 附件对象上的 download_url 即该端点地址
+export function downloadTicketAttachment(downloadUrl: string) {
+  return request.download(downloadUrl)
 }
 
 // ========== 审批 ==========
