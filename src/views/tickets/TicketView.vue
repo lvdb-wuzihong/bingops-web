@@ -103,6 +103,23 @@
         <a-form-item field="description" label="描述">
           <a-textarea v-model="formData.description" placeholder="可选，补充背景与期望" :auto-size="{ minRows: 3, maxRows: 6 }" />
         </a-form-item>
+
+        <!-- 附件（v38）：附件表依赖 ticket_id，只能先在这里选，提交建单成功后自动上传 -->
+        <a-form-item v-if="!editingId" label="附件（可选）">
+          <a-upload
+            v-model:file-list="createFiles"
+            :accept="ATTACHMENT_ACCEPT"
+            multiple
+            :auto-upload="false"
+            :limit="10"
+            @change="onCreateFilesChange"
+          >
+            <a-button size="small"><template #icon><icon-attachment /></template>选择文件</a-button>
+          </a-upload>
+          <template #extra>
+            <span class="attach-hint">提交工单后自动上传；单文件 ≤ {{ ATTACHMENT_MAX_MB }}MB，支持图片 / txt·log·json·csv·md·yaml·sql / pdf / zip·tar（单工单上限 50 个）</span>
+          </template>
+        </a-form-item>
       </a-form>
     </a-modal>
 
@@ -371,8 +388,10 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
-import { IconPlus, IconEdit, IconDelete, IconUser, IconSafe, IconThunderbolt } from '@arco-design/web-vue/es/icon'
+import { IconPlus, IconEdit, IconDelete, IconUser, IconSafe, IconThunderbolt, IconAttachment } from '@arco-design/web-vue/es/icon'
+import type { FileItem } from '@arco-design/web-vue/es/upload/interfaces'
 import * as ticketApi from '../../api/ticket'
+import { ATTACHMENT_ACCEPT, ATTACHMENT_ALLOWED_EXT, ATTACHMENT_MAX_MB } from '../../api/ticket'
 import type { ITicket, ITicketDetail, ITicketComment, IFreeze } from '../../api/ticket'
 import * as metaApi from '../../api/ticketMeta'
 import { DIFFICULTY_MAP } from '../../api/ticketMeta'
@@ -556,6 +575,56 @@ const formRules = {
   catalog_item_id: [{ required: true, message: '请选择服务目录事项' }],
 }
 
+// 建单时选中的附件（不立即上传，建单拿到 id 后统一上传）
+const createFiles = ref<FileItem[]>([])
+
+// 选文件时做前端预校验并剔除不合规项（后端仍会二次校验）
+function onCreateFilesChange(files: FileItem[]) {
+  const valid: FileItem[] = []
+  const rejected: string[] = []
+  for (const f of files) {
+    const name = f.file?.name || f.name || ''
+    const size = f.file?.size ?? 0
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : ''
+    if (!ext || !(ATTACHMENT_ALLOWED_EXT as readonly string[]).includes(ext)) {
+      rejected.push(`${name}（类型不支持）`)
+      continue
+    }
+    if (size > ATTACHMENT_MAX_MB * 1024 * 1024) {
+      rejected.push(`${name}（超过 ${ATTACHMENT_MAX_MB}MB）`)
+      continue
+    }
+    valid.push(f)
+  }
+  if (valid.length !== files.length) {
+    createFiles.value = valid
+    Message.warning(`已移除：${rejected.join('、')}`)
+  }
+}
+
+// 建单成功后按选中顺序上传附件；返回成功个数（503 视为存储未启用，剩余文件不再尝试）
+async function uploadPendingAttachments(ticketId: number): Promise<number> {
+  if (!createFiles.value.length) return 0
+  const failed: string[] = []
+  let ok = 0
+  for (const item of createFiles.value) {
+    const file = item.file
+    if (!file) continue
+    try {
+      await ticketApi.uploadTicketAttachment(ticketId, file)
+      ok++
+    } catch (e) {
+      failed.push(file.name)
+      if ((e as { response?: { status?: number } }).response?.status === 503) {
+        failed.push('（附件存储未启用，其余已跳过）')
+        break
+      }
+    }
+  }
+  if (failed.length) Message.warning(`附件上传失败：${failed.join('、')}`)
+  return ok
+}
+
 function handleAdd() {
   editingId.value = null
   Object.assign(formData, {
@@ -565,6 +634,7 @@ function handleAdd() {
   })
   fetchMetaOptions()
   fetchApps()
+  createFiles.value = []
   formVisible.value = true
 }
 
@@ -598,12 +668,18 @@ async function handleSubmit() {
       })).data
       createdId = created.id
     }
-    Message.success(editingId.value ? '编辑成功' : '创建成功，可在详情中上传附件')
     formVisible.value = false
     fetchData()
-    // 附件依赖 ticket_id（v38）：建单后直接开详情，不用用户再去找入口
-    if (createdId) openDetail(createdId)
-    else if (detailVisible.value && editingId.value) openDetail(editingId.value)
+    if (createdId) {
+      // 附件依赖 ticket_id（v38）：建单成功后再上传表单里选中的文件，随后开详情确认
+      const okCount = await uploadPendingAttachments(createdId)
+      Message.success(okCount > 0 ? `创建成功，${okCount} 个附件已上传` : '创建成功')
+      createFiles.value = []
+      openDetail(createdId)
+    } else {
+      Message.success('编辑成功')
+      if (detailVisible.value && editingId.value) openDetail(editingId.value)
+    }
   } catch { Message.error('操作失败') } finally { formLoading.value = false }
 }
 
@@ -983,7 +1059,8 @@ onMounted(async () => {
 
 .comment-input { display: flex; flex-direction: column; gap: $spacing-sm; align-items: flex-end; }
 
-.form-hint { font-size: $font-size-xs; color: $text-secondary; margin: -8px 0 12px; }
+.form-hint { font-size: $font-size-xs; color: $text-hint; margin: -8px 0 12px; }
+.attach-hint { font-size: $font-size-xs; color: $text-hint; line-height: 1.6; }
 
 .secrets-warn { margin-bottom: 12px; font-size: $font-size-xs; }
 
