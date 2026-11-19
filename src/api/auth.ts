@@ -50,13 +50,13 @@ export function feishuCallback(code: string) {
   return request.get<ILoginResponse>('/api/v1/auth/feishu/callback', { params: { code } })
 }
 
-// ========== MFA 绑定 ==========
+// ========== MFA 绑定（均挂在 /api/v1/auth 前缀下，与登录同一 router） ==========
 // 初始化绑定：登录态外传 setup_ticket（Authorization: Bearer <ticket>），
 // 已登录主动绑定不传，拦截器自动注入本地 access token；返回的 secret 等同绑定凭据
 // 显式 headers 优先于本地 access_token（见 utils/request.ts 请求拦截器）
 export function mfaSetup(setupTicket?: string) {
   return request.post<IMfaSetupResponse>(
-    '/api/v1/mfa/setup',
+    '/api/v1/auth/mfa/setup',
     undefined,
     setupTicket ? { headers: { Authorization: `Bearer ${setupTicket}` } } : undefined
   )
@@ -65,8 +65,13 @@ export function mfaSetup(setupTicket?: string) {
 // 启用绑定：校验首个动态验证码；setup 流程成功响应直接含 token，登录闭环无需再登
 export function mfaEnable(data: IMfaEnableRequest, setupTicket?: string) {
   return request.post<ILoginResponse>(
-    '/api/v1/mfa/enable',
+    '/api/v1/auth/mfa/enable',
     data,
     setupTicket ? { headers: { Authorization: `Bearer ${setupTicket}` } } : undefined
   )
+}
+
+// 解绑动态验证码（已登录，走 access token）
+export function mfaDisable() {
+  return request.post<null>('/api/v1/auth/mfa/disable')
 }

@@ -54,7 +54,7 @@ const AUTH_ENDPOINTS = [
   '/api/v1/auth/login', // 含 /auth/login/mfa
   '/api/v1/auth/refresh',
   '/api/v1/auth/feishu/callback',
-  '/api/v1/mfa/', // setup / enable：配对 setup_ticket 使用，不能触发 token 刷新
+  '/api/v1/auth/mfa/', // setup / enable / disable：绑定用 setup_ticket 鉴权，不能触发 token 刷新
 ]
 
 // 认证端点这些状态码一律透传后端原因（400/422 含验证码错误，423/429 含锁定限流）
