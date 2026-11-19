@@ -1,7 +1,8 @@
 import type { Router } from 'vue-router'
 import { useUserStore } from '../stores/user'
 
-const WHITE_LIST = ['/auth/login']
+// /mfa/bind 是登录态外的绑定页（setup_ticket 凭证），未登录也要放行
+const WHITE_LIST = ['/auth/login', '/mfa/bind']
 
 export function setupRouterGuard(router: Router) {
   router.beforeEach(async (to, _from, next) => {

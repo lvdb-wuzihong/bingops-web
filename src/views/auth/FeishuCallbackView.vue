@@ -36,6 +36,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { useUserStore } from '../../stores/user'
 import { changePassword, feishuCallback } from '../../api/auth'
+import { saveMfaSetupTicket } from '../../utils/mfa'
 
 const route = useRoute()
 const router = useRouter()
@@ -99,7 +100,24 @@ onMounted(async () => {
   }
   try {
     const res = await feishuCallback(code)
-    userStore.setTokens(res.data.access_token, res.data.refresh_token)
+    const data = res.data
+    // 强制 MFA 策略下飞书 SSO 同样可能返回绑定/二次验证分支
+    if (data.mfa_setup_required && data.setup_ticket) {
+      saveMfaSetupTicket(data.setup_ticket)
+      router.replace('/mfa/bind')
+      return
+    }
+    if (data.mfa_required) {
+      Message.error('该账号需要动态验证码验证，请使用账号密码登录完成验证')
+      setTimeout(() => router.replace('/auth/login'), 1800)
+      return
+    }
+    if (!data.access_token || !data.refresh_token) {
+      Message.error('飞书登录响应异常，请稍后重试')
+      setTimeout(() => router.replace('/auth/login'), 1800)
+      return
+    }
+    userStore.setTokens(data.access_token, data.refresh_token)
     await userStore.fetchUserInfo()
     // 飞书开户用户无本地密码：引导首次设置（可跳过）
     if (userStore.currentUser?.has_password === false) {

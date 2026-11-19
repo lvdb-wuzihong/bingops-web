@@ -128,6 +128,10 @@
                 <template #icon><icon-lock /></template>
                 {{ hasPassword ? '修改密码' : '设置密码' }}
               </a-doption>
+              <a-doption @click="router.push('/mfa/bind')">
+                <template #icon><icon-safe /></template>
+                绑定动态验证码
+              </a-doption>
               <a-doption @click="handleLogout">
                 <template #icon><icon-export /></template>
                 退出登录
@@ -190,6 +194,7 @@ import {
   IconDown,
   IconUser,
   IconLock,
+  IconSafe,
   IconExport,
 } from '@arco-design/web-vue/es/icon'
 

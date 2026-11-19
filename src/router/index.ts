@@ -22,6 +22,13 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    // 动态验证码绑定页：登录态外（setup_ticket）与已登录主动绑定共用
+    path: '/mfa/bind',
+    name: 'MfaBind',
+    component: () => import('../views/auth/MfaBindView.vue'),
+    meta: { title: '绑定动态验证码', hidden: true },
+  },
+  {
     path: '/',
     component: MainLayout,
     redirect: '/dashboard',
